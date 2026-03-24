@@ -140,9 +140,9 @@ Compared with the round anchor, the improvement on `rel_l2` is `0.004000`.
 ## Current v0 features
 
 - simple file-based task spec
-- heuristic round planning
+- heuristic round planning with explicit exploit / explore / ablate / validate modes
 - lightweight history-aware carryover of the best previous configuration
-- round 2+ ablation and local exploration around the current best run
+- round 2+ generation that adapts between refinement, ablation, exploration, and validation
 - local execution of train/eval commands
 - markdown round summaries with config changes, ranking, baseline deltas, and anchor deltas
 - suggestion logic that reasons about anchor gains and top-run gaps
