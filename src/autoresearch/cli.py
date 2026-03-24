@@ -60,7 +60,7 @@ def run(
     if task is None and plan_path is None:
         raise typer.BadParameter("Provide --task or --plan")
     if task is None:
-        raise typer.BadParameter("V0 requires --task so the task spec can be loaded")
+        raise typer.BadParameter("A task file is required so the task spec can be loaded")
     task_spec = load_task(task)
     run_root = infer_run_root(task)
     history = load_history(run_root, task_name=task_spec.name)
@@ -89,7 +89,8 @@ def summarize(run: Path = typer.Option(..., help="Run directory"), round_index: 
     if not history.entries:
         raise typer.BadParameter("No history available to summarize")
     entry = history.entries[-1] if round_index is None else next(e for e in history.entries if e.round_index == round_index)
-    summary = build_summary(task_spec, entry.round_index, entry.experiments)
+    historical_results = [r for e in history.entries if e.round_index < entry.round_index for r in e.experiments]
+    summary = build_summary(task_spec, entry.round_index, entry.experiments, historical_results=historical_results)
     path = round_summary_path(run, entry.round_index)
     save_summary(path, summary)
     entry.summary_path = str(path)
@@ -120,6 +121,10 @@ def status(run: Path = typer.Option(..., help="Run directory")):
     history = load_history(run, task_name=task_spec.name)
     console.print(f"Task: [bold]{task_spec.name}[/bold]")
     console.print(f"Rounds completed: {len(history.entries)} / {task_spec.budget.max_rounds}")
+    console.print(f"Seeds: {task_spec.seeds if task_spec.seeds else 'none'}")
+    console.print(
+        f"Evaluation regimes: {', '.join(regime.name for regime in task_spec.evaluation_regimes) if task_spec.evaluation_regimes else 'default'}"
+    )
     if not history.entries:
         console.print("No completed rounds yet.")
         return
@@ -127,13 +132,23 @@ def status(run: Path = typer.Option(..., help="Run directory")):
     metric_name = task_spec.reporting.sort_by or (task_spec.metrics.primary[0] if task_spec.metrics.primary else "score")
     lower_is_better = task_spec.reporting.lower_is_better
     all_results = []
+    trend_lines = []
     for entry in history.entries:
-        all_results.extend([r for r in entry.experiments if r.status == "ok" and metric_name in r.metrics])
+        round_results = [r for r in entry.experiments if r.status == "ok" and metric_name in r.metrics]
+        all_results.extend(round_results)
+        if round_results:
+            best_round = sorted(round_results, key=lambda r: r.metrics[metric_name], reverse=not lower_is_better)[0]
+            trend_lines.append(f"round {entry.round_index}: {best_round.experiment_id} -> {best_round.metrics[metric_name]}")
 
     if all_results:
         best = sorted(all_results, key=lambda r: r.metrics[metric_name], reverse=not lower_is_better)[0]
         console.print(f"Best so far: {best.experiment_id} (round {best.round_index}) -> {metric_name}={best.metrics[metric_name]}")
         console.print(f"Best config: {best.config}")
+
+    if trend_lines:
+        console.print("Per-round best trend:")
+        for line in trend_lines:
+            console.print(f"- {line}")
 
     latest = history.entries[-1]
     console.print(f"Latest round: {latest.round_index}")

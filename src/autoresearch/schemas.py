@@ -31,6 +31,11 @@ class ReportingConfig(BaseModel):
     lower_is_better: bool = True
 
 
+class EvaluationRegime(BaseModel):
+    name: str
+    description: str = ""
+
+
 class TaskSpec(BaseModel):
     name: str
     description: str = ""
@@ -41,6 +46,8 @@ class TaskSpec(BaseModel):
     planner: PlannerConfig = Field(default_factory=PlannerConfig)
     budget: BudgetConfig = Field(default_factory=BudgetConfig)
     reporting: ReportingConfig = Field(default_factory=ReportingConfig)
+    seeds: list[int] = Field(default_factory=list)
+    evaluation_regimes: list[EvaluationRegime] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
 
 
@@ -84,6 +91,7 @@ class History(BaseModel):
 class Suggestion(BaseModel):
     title: str
     rationale: str
+    next_action_type: Literal["exploit", "explore", "ablate", "validate", "stop"] = "validate"
     actions: list[str] = Field(default_factory=list)
 
 

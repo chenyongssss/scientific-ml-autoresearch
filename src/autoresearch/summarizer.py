@@ -27,10 +27,18 @@ def _anchor_result(results: list[ExperimentResult]) -> ExperimentResult | None:
     return None
 
 
-def build_summary(task: TaskSpec, round_index: int, results: list[ExperimentResult]) -> str:
+def _best_result(results: list[ExperimentResult], metric_name: str, lower_is_better: bool) -> ExperimentResult | None:
+    completed = [r for r in results if r.status == "ok" and metric_name in r.metrics]
+    if not completed:
+        return None
+    return sorted(completed, key=lambda r: _metric_value(r, metric_name, lower_is_better), reverse=not lower_is_better)[0]
+
+
+def build_summary(task: TaskSpec, round_index: int, results: list[ExperimentResult], historical_results: list[ExperimentResult] | None = None) -> str:
     metric_name = task.reporting.sort_by or (task.metrics.primary[0] if task.metrics.primary else "score")
     lower_is_better = task.reporting.lower_is_better
     baseline_config = task.planner.baseline
+    historical_results = historical_results or []
 
     completed = [r for r in results if r.status == "ok"]
     failed = [r for r in results if r.status == "failed"]
@@ -38,6 +46,7 @@ def build_summary(task: TaskSpec, round_index: int, results: list[ExperimentResu
     anchor_result = _anchor_result(results)
     ranked = sorted(completed, key=lambda r: _metric_value(r, metric_name, lower_is_better), reverse=not lower_is_better)
     best = ranked[0] if ranked else None
+    best_so_far = _best_result(historical_results + results, metric_name, lower_is_better)
 
     lines = [
         f"# Round {round_index} Summary",
@@ -50,6 +59,8 @@ def build_summary(task: TaskSpec, round_index: int, results: list[ExperimentResu
         f"- Experiments: {len(results)}",
         f"- Completed: {len(completed)}",
         f"- Failed: {len(failed)}",
+        f"- Seeds configured: {task.seeds if task.seeds else 'none'}",
+        f"- Evaluation regimes: {', '.join(regime.name for regime in task.evaluation_regimes) if task.evaluation_regimes else 'default'}",
         "",
         "## Results",
         "",
@@ -102,6 +113,15 @@ def build_summary(task: TaskSpec, round_index: int, results: list[ExperimentResu
     else:
         lines.append("No successful runs were available for comparison.")
 
+    lines.extend(["", "## Best So Far"])
+    if best_so_far is not None:
+        lines.append(
+            f"Across all completed rounds, the best run so far is `{best_so_far.experiment_id}` from round `{best_so_far.round_index}` with `{metric_name}={best_so_far.metrics.get(metric_name)}`."
+        )
+        lines.append(f"Best-so-far config snapshot: `{_format_config_changes(best_so_far.config, baseline_config)}`.")
+    else:
+        lines.append("No best-so-far record is available yet.")
+
     lines.extend(["", "## Ranking"])
     if ranked:
         for idx, result in enumerate(ranked, start=1):
@@ -114,6 +134,8 @@ def build_summary(task: TaskSpec, round_index: int, results: list[ExperimentResu
         lines.append(f"- The round anchor is `{anchor_result.experiment_id}` with changes: {_format_config_changes(anchor_result.config, baseline_config)}.")
     if best is not None:
         lines.append(f"- The current best run is `{best.experiment_id}` with changes: {_format_config_changes(best.config, baseline_config)}.")
+    if best_so_far is not None and best is not None and best_so_far.experiment_id == best.experiment_id and best_so_far.round_index == best.round_index:
+        lines.append("- This round produced the current best-so-far result.")
     if failed:
         lines.append(f"- {len(failed)} run(s) failed and should be checked before drawing conclusions.")
     else:

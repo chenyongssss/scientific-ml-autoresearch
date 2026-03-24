@@ -19,8 +19,18 @@ def run_loop(task_path: Path, rounds: int, console: Console | None = None) -> No
     history = load_history(run_root, task_name=task.name)
 
     remaining = min(rounds, task.budget.max_rounds - len(history.entries))
+    if remaining <= 0:
+        if console:
+            console.print("No remaining rounds available under the current budget.")
+        return
+
     for _ in range(max(remaining, 0)):
         plan = build_round_plan(task, history)
+        if not plan.experiments:
+            if console:
+                console.print(f"Stopping early at round {plan.round_index}: planner produced no experiments.")
+            break
+
         plan_path = round_plan_path(run_root, plan.round_index)
         save_plan(plan_path, plan)
         if console:
@@ -30,8 +40,9 @@ def run_loop(task_path: Path, rounds: int, console: Console | None = None) -> No
                 console.print(f"  - {exp.id}: {exp.tag} ({note})")
 
         results = execute_plan(task, plan, run_root)
+        historical_results = [r for entry in history.entries for r in entry.experiments]
         summary_path = round_summary_path(run_root, plan.round_index)
-        summary_text = build_summary(task, plan.round_index, results)
+        summary_text = build_summary(task, plan.round_index, results, historical_results=historical_results)
         save_summary(summary_path, summary_text)
 
         suggestion = build_suggestions(task, results)
@@ -58,7 +69,7 @@ def run_loop(task_path: Path, rounds: int, console: Console | None = None) -> No
                 lower_is_better = task.reporting.lower_is_better
                 best = sorted(successful, key=lambda r: r.metrics[metric_name], reverse=not lower_is_better)[0]
                 console.print(
-                    f"[green]Round {plan.round_index} done[/green]: completed={completed}, failed={failed}, best={best.experiment_id}, {metric_name}={best.metrics[metric_name]}"
+                    f"[green]Round {plan.round_index} done[/green]: completed={completed}, failed={failed}, best={best.experiment_id}, {metric_name}={best.metrics[metric_name]}, next={suggestion.next_action_type}"
                 )
             else:
                 console.print(f"[yellow]Round {plan.round_index} done[/yellow]: completed={completed}, failed={failed}, no valid metric yet")

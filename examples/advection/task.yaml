@@ -28,6 +28,12 @@ budget:
 reporting:
   sort_by: rel_l2
   lower_is_better: true
+seeds: [0, 1]
+evaluation_regimes:
+  - name: default-grid
+    description: Standard resolution and interpolation setting.
+  - name: harder-grid
+    description: Slightly more challenging evaluation on a shifted grid.
 notes:
   - prefer stable training
   - prioritize conservation-related observations
