@@ -15,6 +15,7 @@ def test_summary_includes_anchor_delta():
         ExperimentResult(experiment_id="exp_001", round_index=2, status="ok", metrics={"rel_l2": 0.2}, config={"model.width": 64}, run_dir="a"),
         ExperimentResult(experiment_id="exp_002", round_index=2, status="ok", metrics={"rel_l2": 0.1}, config={"model.width": 32}, run_dir="b"),
     ]
-    summary = build_summary(task, 2, results)
+    summary = build_summary(task, 2, results, round_mode="validate")
     assert "Delta vs anchor" in summary
     assert "Compared with the round anchor" in summary
+    assert "Round mode: validate" in summary

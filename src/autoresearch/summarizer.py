@@ -34,7 +34,13 @@ def _best_result(results: list[ExperimentResult], metric_name: str, lower_is_bet
     return sorted(completed, key=lambda r: _metric_value(r, metric_name, lower_is_better), reverse=not lower_is_better)[0]
 
 
-def build_summary(task: TaskSpec, round_index: int, results: list[ExperimentResult], historical_results: list[ExperimentResult] | None = None) -> str:
+def build_summary(
+    task: TaskSpec,
+    round_index: int,
+    results: list[ExperimentResult],
+    historical_results: list[ExperimentResult] | None = None,
+    round_mode: str | None = None,
+) -> str:
     metric_name = task.reporting.sort_by or (task.metrics.primary[0] if task.metrics.primary else "score")
     lower_is_better = task.reporting.lower_is_better
     baseline_config = task.planner.baseline
@@ -61,6 +67,7 @@ def build_summary(task: TaskSpec, round_index: int, results: list[ExperimentResu
         f"- Failed: {len(failed)}",
         f"- Seeds configured: {task.seeds if task.seeds else 'none'}",
         f"- Evaluation regimes: {', '.join(regime.name for regime in task.evaluation_regimes) if task.evaluation_regimes else 'default'}",
+        f"- Round mode: {round_mode or 'unspecified'}",
         "",
         "## Results",
         "",
@@ -130,6 +137,8 @@ def build_summary(task: TaskSpec, round_index: int, results: list[ExperimentResu
         lines.append("No successful runs to rank.")
 
     lines.extend(["", "## Observations"])
+    if round_mode is not None:
+        lines.append(f"- This round was planned in `{round_mode}` mode.")
     if anchor_result is not None:
         lines.append(f"- The round anchor is `{anchor_result.experiment_id}` with changes: {_format_config_changes(anchor_result.config, baseline_config)}.")
     if best is not None:

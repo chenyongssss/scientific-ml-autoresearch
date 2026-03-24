@@ -21,6 +21,17 @@ ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES_DIR = ROOT / "examples"
 
 
+def _round_mode_from_plan(plan) -> str:
+    if not plan.experiments:
+        return "unspecified"
+    tag = plan.experiments[0].tag
+    if tag.startswith("carryover-"):
+        return tag.removeprefix("carryover-")
+    if tag == "baseline":
+        return "explore"
+    return tag
+
+
 @app.command()
 def init(example: str = typer.Option(..., help="Example name under examples/"), output: Path = typer.Option(..., help="Output run directory.")):
     source = EXAMPLES_DIR / example
@@ -39,14 +50,16 @@ def plan(task: Path = typer.Option(..., help="Path to task.yaml"), preview: bool
     run_root = infer_run_root(task)
     history = load_history(run_root, task_name=task_spec.name)
     round_plan = build_round_plan(task_spec, history)
+    round_mode = _round_mode_from_plan(round_plan)
     if preview:
-        console.print(f"Preview for round {round_plan.round_index}:")
+        console.print(f"Preview for round {round_plan.round_index} (mode={round_mode}):")
         for exp in round_plan.experiments:
             console.print(f"- {exp.id}: {exp.tag} :: {exp.notes[0] if exp.notes else ''}")
         return
     path = round_plan_path(run_root, round_plan.round_index)
     save_plan(path, round_plan)
     console.print(f"Saved round plan to [green]{path}[/green]")
+    console.print(f"Round mode: {round_mode}")
     for exp in round_plan.experiments:
         console.print(f"- {exp.id}: {exp.tag}")
 
@@ -70,15 +83,16 @@ def run(
         round_plan = load_plan(plan_path)
     else:
         round_plan = build_round_plan(task_spec, history)
+    round_mode = _round_mode_from_plan(round_plan)
     if dry_run:
-        console.print(f"Dry run for round {round_plan.round_index}:")
+        console.print(f"Dry run for round {round_plan.round_index} (mode={round_mode}):")
         for exp in round_plan.experiments:
             console.print(f"- {exp.id}: {exp.tag} -> {exp.config}")
         return
     results = execute_plan(task_spec, round_plan, run_root)
     history.entries.append(HistoryEntry(round_index=round_plan.round_index, plan_path=str(plan_path), experiments=results))
     save_history(run_root, history)
-    console.print(f"Executed {len(results)} experiment(s) for round {round_plan.round_index}.")
+    console.print(f"Executed {len(results)} experiment(s) for round {round_plan.round_index} in mode={round_mode}.")
 
 
 @app.command()
@@ -90,7 +104,9 @@ def summarize(run: Path = typer.Option(..., help="Run directory"), round_index: 
         raise typer.BadParameter("No history available to summarize")
     entry = history.entries[-1] if round_index is None else next(e for e in history.entries if e.round_index == round_index)
     historical_results = [r for e in history.entries if e.round_index < entry.round_index for r in e.experiments]
-    summary = build_summary(task_spec, entry.round_index, entry.experiments, historical_results=historical_results)
+    plan = load_plan(Path(entry.plan_path)) if Path(entry.plan_path).exists() else None
+    round_mode = _round_mode_from_plan(plan) if plan is not None else "unspecified"
+    summary = build_summary(task_spec, entry.round_index, entry.experiments, historical_results=historical_results, round_mode=round_mode)
     path = round_summary_path(run, entry.round_index)
     save_summary(path, summary)
     entry.summary_path = str(path)
@@ -138,7 +154,9 @@ def status(run: Path = typer.Option(..., help="Run directory")):
         all_results.extend(round_results)
         if round_results:
             best_round = sorted(round_results, key=lambda r: r.metrics[metric_name], reverse=not lower_is_better)[0]
-            trend_lines.append(f"round {entry.round_index}: {best_round.experiment_id} -> {best_round.metrics[metric_name]}")
+            plan = load_plan(Path(entry.plan_path)) if Path(entry.plan_path).exists() else None
+            mode = _round_mode_from_plan(plan) if plan is not None else "unspecified"
+            trend_lines.append(f"round {entry.round_index} [{mode}]: {best_round.experiment_id} -> {best_round.metrics[metric_name]}")
 
     if all_results:
         best = sorted(all_results, key=lambda r: r.metrics[metric_name], reverse=not lower_is_better)[0]
@@ -151,7 +169,9 @@ def status(run: Path = typer.Option(..., help="Run directory")):
             console.print(f"- {line}")
 
     latest = history.entries[-1]
-    console.print(f"Latest round: {latest.round_index}")
+    latest_plan = load_plan(Path(latest.plan_path)) if Path(latest.plan_path).exists() else None
+    latest_mode = _round_mode_from_plan(latest_plan) if latest_plan is not None else "unspecified"
+    console.print(f"Latest round: {latest.round_index} (mode={latest_mode})")
     if latest.summary_path:
         console.print(f"Summary: {latest.summary_path}")
     if latest.suggestion_path:

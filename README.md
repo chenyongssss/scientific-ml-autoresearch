@@ -88,6 +88,184 @@ You can also start from the second example:
 autoresearch init --example burgers --output runs/burgers_demo
 ```
 
+## Detailed usage guide
+
+### 1. Initialize a run directory
+
+```bash
+autoresearch init --example advection --output runs/advection_demo
+```
+
+This creates a self-contained run directory with:
+
+- `task.yaml`
+- example scripts
+- `history.json`
+
+Use `advection` or `burgers` as the starting example, then edit `task.yaml` to match your own project.
+
+### 2. Inspect the task file
+
+A task file defines:
+
+- `commands.train` and `commands.eval`
+- tracked metrics
+- search space
+- planner baseline
+- budget
+- optional `seeds`
+- optional `evaluation_regimes`
+
+Minimal example:
+
+```yaml
+name: advection_minimal
+workspace: .
+commands:
+  train: "python train.py --config {config_path} --output-dir {run_dir}"
+  eval: "python evaluate.py --run-dir {run_dir}"
+metrics:
+  primary: [rel_l2]
+  secondary: [conservation_error, runtime_seconds]
+search_space:
+  model.width: [32, 64]
+planner:
+  baseline:
+    model.width: 32
+budget:
+  max_runs_per_round: 4
+  max_rounds: 3
+seeds: [0, 1]
+evaluation_regimes:
+  - name: default-grid
+  - name: harder-grid
+```
+
+### 3. Preview the next round
+
+```bash
+autoresearch plan --task runs/advection_demo/task.yaml --preview
+```
+
+This shows the next round without writing files.
+
+Useful when you want to inspect whether the planner is in:
+
+- `explore`
+- `exploit`
+- `ablate`
+- `validate`
+
+mode before actually saving or running anything.
+
+### 4. Save a round plan
+
+```bash
+autoresearch plan --task runs/advection_demo/task.yaml
+```
+
+This writes a file like:
+
+- `round_01_plan.yaml`
+- `round_02_plan.yaml`
+
+The first experiment in each round is the anchor, and its tag encodes the round mode, for example:
+
+- `carryover-explore`
+- `carryover-exploit`
+- `carryover-ablate`
+- `carryover-validate`
+
+### 5. Dry-run before execution
+
+```bash
+autoresearch run --task runs/advection_demo/task.yaml --dry-run
+```
+
+This prints the exact experiment configs that would run.
+
+### 6. Execute experiments
+
+```bash
+autoresearch run --task runs/advection_demo/task.yaml
+```
+
+By default the runner:
+
+- writes one config per experiment
+- executes the training command
+- executes the evaluation command
+- collects metrics into per-experiment directories
+
+### 7. Summarize results
+
+```bash
+autoresearch summarize --run runs/advection_demo
+```
+
+The generated summary includes:
+
+- round mode
+- ranking
+- delta vs baseline
+- delta vs round anchor
+- best run in this round
+- best-so-far across all completed rounds
+
+### 8. Generate next-step suggestions
+
+```bash
+autoresearch suggest --run runs/advection_demo
+```
+
+Suggestions include:
+
+- rationale from the current round
+- `next_action_type`
+- actionable next experiments
+
+Current action types are:
+
+- `explore`
+- `exploit`
+- `ablate`
+- `validate`
+- `stop`
+
+### 9. Check current status
+
+```bash
+autoresearch status --run runs/advection_demo
+```
+
+This shows:
+
+- rounds completed
+- seeds and evaluation regimes
+- best-so-far run and config
+- per-round best trend
+- latest summary path
+- latest suggestion path
+- latest round mode
+
+### 10. Run a multi-round loop
+
+```bash
+autoresearch loop --task runs/advection_demo/task.yaml --rounds 3
+```
+
+During the loop, the tool now prints:
+
+- current round mode
+- planned experiments
+- round completion summary
+- current best result
+- next recommended action type
+
+The loop also supports a lightweight stopping heuristic:
+
+- if the suggestion after a round becomes `stop`, the loop ends early
+
 ## Helpful CLI options
 
 ```bash
@@ -132,23 +310,24 @@ Compared with baseline, the improvement on `rel_l2` is `0.016800`.
 Compared with the round anchor, the improvement on `rel_l2` is `0.004000`.
 
 ## Observations
+- This round was planned in `ablate` mode.
 - The round anchor is `exp_001` with changes: model.width=64.
 - The current best run is `exp_003` with changes: model.width=64, model.depth=3.
 - No failed runs were observed in this round.
 ```
 
-## Current v0 features
+## Current features
 
 - simple file-based task spec
 - heuristic round planning with explicit exploit / explore / ablate / validate modes
 - lightweight history-aware carryover of the best previous configuration
 - round 2+ generation that adapts between refinement, ablation, exploration, and validation
 - local execution of train/eval commands
-- markdown round summaries with config changes, ranking, baseline deltas, and anchor deltas
-- suggestion logic that reasons about anchor gains and top-run gaps
+- markdown round summaries with round mode, config changes, ranking, baseline deltas, and anchor deltas
+- suggestion logic that reasons about anchor gains, top-run gaps, and stopping cases
 - reproducible run directories
 - plan preview, run dry-run, and status inspection support
-- more informative loop progress logs
+- more informative loop progress logs with early stopping on `stop`
 - two toy scientific ML-style examples: advection and Burgers
 
 ## Project layout
@@ -172,20 +351,14 @@ This repo tries to sit in a narrow but useful space:
 
 If it helps researchers spend less time on repetitive workflow glue and more time on actual scientific reasoning, it is doing its job.
 
-## Roadmap
+## Next improvements
 
-### v0
-- local-first CLI workflow
-- file-based task specs
-- minimal planning, running, summarizing, and suggestion loop
-- toy examples for adaptation
+Near-term improvements are still focused on practical workflow quality:
 
-### v1
-- stronger history-aware planning
-- richer summary tables and config diff views
-- optional LLM-backed suggestion mode
-- more scientific ML examples
-- lightweight robustness and ablation helpers
+- stronger historical stopping rules
+- richer summary/report views
+- more realistic scientific ML adapters
+- optional model-backed suggestion mode
 
 ## License
 
