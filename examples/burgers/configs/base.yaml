@@ -1,0 +1,8 @@
+model:
+  width: 32
+  depth: 2
+training:
+  lr: 0.001
+loss:
+  smoothness_weight: 0.0
+

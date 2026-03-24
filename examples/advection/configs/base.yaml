@@ -1,0 +1,7 @@
+model:
+  width: 32
+  depth: 2
+training:
+  lr: 0.001
+loss:
+  conservation_weight: 0.0

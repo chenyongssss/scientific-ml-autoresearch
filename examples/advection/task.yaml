@@ -1,0 +1,33 @@
+name: advection_minimal
+description: Minimal iterative workflow for a toy 1D advection benchmark.
+workspace: .
+commands:
+  train: "python train.py --config {config_path} --output-dir {run_dir}"
+  eval: "python evaluate.py --run-dir {run_dir}"
+metrics:
+  primary:
+    - rel_l2
+  secondary:
+    - conservation_error
+    - runtime_seconds
+search_space:
+  model.width: [32, 64]
+  model.depth: [2, 3]
+  training.lr: [0.001, 0.0005]
+  loss.conservation_weight: [0.0, 0.01]
+planner:
+  strategy: heuristic
+  baseline:
+    model.width: 32
+    model.depth: 2
+    training.lr: 0.001
+    loss.conservation_weight: 0.0
+budget:
+  max_runs_per_round: 4
+  max_rounds: 3
+reporting:
+  sort_by: rel_l2
+  lower_is_better: true
+notes:
+  - prefer stable training
+  - prioritize conservation-related observations

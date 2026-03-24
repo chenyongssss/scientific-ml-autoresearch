@@ -1,0 +1,33 @@
+name: burgers_minimal
+description: Minimal iterative workflow for a toy Burgers benchmark.
+workspace: .
+commands:
+  train: "python train.py --config {config_path} --output-dir {run_dir}"
+  eval: "python evaluate.py --run-dir {run_dir}"
+metrics:
+  primary:
+    - rel_l2
+  secondary:
+    - shock_error
+    - runtime_seconds
+search_space:
+  model.width: [32, 64]
+  model.depth: [2, 4]
+  training.lr: [0.001, 0.0005]
+  loss.smoothness_weight: [0.0, 0.02]
+planner:
+  strategy: heuristic
+  baseline:
+    model.width: 32
+    model.depth: 2
+    training.lr: 0.001
+    loss.smoothness_weight: 0.0
+budget:
+  max_runs_per_round: 4
+  max_rounds: 3
+reporting:
+  sort_by: rel_l2
+  lower_is_better: true
+notes:
+  - prioritize stable optimization
+  - watch whether smoothness helps or oversmooths
