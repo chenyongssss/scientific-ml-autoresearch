@@ -29,3 +29,5 @@ def test_summary_includes_anchor_delta():
     assert "Claim assessment" in summary
     assert "Positive rounds so far" in summary
     assert "Historical evidence" in summary
+    assert "Claim trajectory" in summary
+    assert "Branch evidence" in summary

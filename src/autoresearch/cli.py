@@ -11,8 +11,7 @@ from .planner import build_round_plan
 from .runner import execute_plan
 from .schemas import HistoryEntry, infer_run_root
 from .storage import load_history, load_plan, load_task, save_history, save_plan
-from .summarizer import build_summary
-from .summarizer import save_summary
+from .summarizer import build_summary, save_summary
 from .suggester import build_suggestions, render_suggestions
 from .utils import round_plan_path, round_summary_path, round_suggestions_path
 
@@ -31,6 +30,26 @@ def _round_mode_from_plan(plan) -> str:
     if tag == "baseline":
         return "explore"
     return tag
+
+
+def _metric_name(task_spec):
+    return task_spec.reporting.sort_by or (task_spec.metrics.primary[0] if task_spec.metrics.primary else "score")
+
+
+def _round_claim_label(task_spec, round_results):
+    metric_name = _metric_name(task_spec)
+    lower_is_better = task_spec.reporting.lower_is_better
+    anchor = next((r for r in round_results if r.status == "ok" and r.experiment_id == "exp_001" and metric_name in r.metrics), None)
+    completed = [r for r in round_results if r.status == "ok" and metric_name in r.metrics]
+    if not completed or anchor is None:
+        return "uncertain"
+    best = sorted(completed, key=lambda r: r.metrics[metric_name], reverse=not lower_is_better)[0]
+    improvement = anchor.metrics[metric_name] - best.metrics[metric_name] if lower_is_better else best.metrics[metric_name] - anchor.metrics[metric_name]
+    if improvement > 0.01:
+        return "supported"
+    if improvement > 0:
+        return "observed"
+    return "uncertain"
 
 
 @app.command()
@@ -147,18 +166,26 @@ def status(run: Path = typer.Option(..., help="Run directory")):
         console.print("No completed rounds yet.")
         return
 
-    metric_name = task_spec.reporting.sort_by or (task_spec.metrics.primary[0] if task_spec.metrics.primary else "score")
+    metric_name = _metric_name(task_spec)
     lower_is_better = task_spec.reporting.lower_is_better
     all_results = []
     trend_lines = []
+    claim_lines = []
+    branch_counter = {}
+    baseline = task_spec.planner.baseline
     for entry in history.entries:
         round_results = [r for r in entry.experiments if r.status == "ok" and metric_name in r.metrics]
         all_results.extend(round_results)
+        for result in round_results:
+            changed = sorted(key for key, value in result.config.items() if baseline.get(key) != value)
+            branch = "+".join(changed) if changed else "baseline"
+            branch_counter[branch] = branch_counter.get(branch, 0) + 1
         if round_results:
             best_round = sorted(round_results, key=lambda r: r.metrics[metric_name], reverse=not lower_is_better)[0]
             plan = load_plan(Path(entry.plan_path)) if Path(entry.plan_path).exists() else None
             mode = _round_mode_from_plan(plan) if plan is not None else "unspecified"
             trend_lines.append(f"round {entry.round_index} [{mode}]: {best_round.experiment_id} -> {best_round.metrics[metric_name]}")
+            claim_lines.append(f"round {entry.round_index}: {_round_claim_label(task_spec, round_results)}")
 
     if all_results:
         best = sorted(all_results, key=lambda r: r.metrics[metric_name], reverse=not lower_is_better)[0]
@@ -169,6 +196,14 @@ def status(run: Path = typer.Option(..., help="Run directory")):
         console.print("Per-round best trend:")
         for line in trend_lines:
             console.print(f"- {line}")
+    if claim_lines:
+        console.print("Claim trajectory:")
+        for line in claim_lines:
+            console.print(f"- {line}")
+    if branch_counter:
+        console.print("Branch evidence:")
+        for branch, count in sorted(branch_counter.items(), key=lambda item: (-item[1], item[0])):
+            console.print(f"- {branch}: {count} successful run(s)")
 
     latest = history.entries[-1]
     latest_plan = load_plan(Path(latest.plan_path)) if Path(latest.plan_path).exists() else None

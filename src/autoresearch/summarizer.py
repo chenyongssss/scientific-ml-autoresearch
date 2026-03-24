@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 
 from .schemas import ExperimentResult, TaskSpec
@@ -11,6 +12,11 @@ def _format_config_changes(config: dict, baseline: dict) -> str:
         if baseline.get(key) != value:
             changes.append(f"{key}={value}")
     return ", ".join(changes) if changes else "baseline"
+
+
+def _branch_label(config: dict, baseline: dict) -> str:
+    changed = sorted(key for key, value in config.items() if baseline.get(key) != value)
+    return "+".join(changed) if changed else "baseline"
 
 
 def _metric_value(result: ExperimentResult, metric_name: str, lower_is_better: bool):
@@ -46,14 +52,18 @@ def _round_improvement(results: list[ExperimentResult], metric_name: str, lower_
 def _historical_evidence(task: TaskSpec, historical_results: list[ExperimentResult], current_results: list[ExperimentResult]) -> dict:
     metric_name = task.reporting.sort_by or (task.metrics.primary[0] if task.metrics.primary else "score")
     lower_is_better = task.reporting.lower_is_better
+    baseline = task.planner.baseline
     all_rounds: dict[int, list[ExperimentResult]] = {}
+    branch_counter: Counter[str] = Counter()
     for result in historical_results + current_results:
         all_rounds.setdefault(result.round_index, []).append(result)
+        if result.status == "ok" and metric_name in result.metrics:
+            branch_counter[_branch_label(result.config, baseline)] += 1
 
     positive_rounds = 0
     non_improving_rounds = 0
-    best_history = None
     trajectory = []
+    claim_trajectory = []
     for round_index in sorted(all_rounds):
         round_results = all_rounds[round_index]
         improvement = _round_improvement(round_results, metric_name, lower_is_better)
@@ -63,13 +73,23 @@ def _historical_evidence(task: TaskSpec, historical_results: list[ExperimentResu
             non_improving_rounds += 1
         best_round = _best_result(round_results, metric_name, lower_is_better)
         if best_round is not None:
-            trajectory.append((round_index, best_round.metrics[metric_name]))
-            if best_history is None:
-                best_history = best_round.metrics[metric_name]
+            trajectory.append((round_index, best_round.metrics[metric_name], _branch_label(best_round.config, baseline)))
+            if improvement is None:
+                claim_label = "uncertain"
+            elif improvement > 0.01:
+                claim_label = "supported" if positive_rounds >= 2 else "needs-validation"
+            elif improvement > 0:
+                claim_label = "observed"
+            else:
+                claim_label = "uncertain"
+            claim_trajectory.append((round_index, claim_label))
+
     return {
         "positive_rounds": positive_rounds,
         "non_improving_rounds": non_improving_rounds,
         "trajectory": trajectory,
+        "claim_trajectory": claim_trajectory,
+        "branch_counter": dict(branch_counter),
     }
 
 
@@ -113,8 +133,8 @@ def build_summary(
     ranked = sorted(completed, key=lambda r: _metric_value(r, metric_name, lower_is_better), reverse=not lower_is_better)
     best = ranked[0] if ranked else None
     best_so_far = _best_result(historical_results + results, metric_name, lower_is_better)
-    claim_strength = _claim_strength(task, results, historical_results, metric_name, lower_is_better)
     evidence = _historical_evidence(task, historical_results, results)
+    claim_strength = _claim_strength(task, results, historical_results, metric_name, lower_is_better)
 
     lines = [
         f"# Round {round_index} Summary",
@@ -215,6 +235,20 @@ def build_summary(
         lines.append("- Next validation needed: run the named scientific checks before treating the improvement as robust.")
     else:
         lines.append("- Next validation needed: add at least one harder or shifted evaluation before making broader claims.")
+
+    lines.extend(["", "## Claim trajectory"])
+    if evidence["claim_trajectory"]:
+        for round_idx, label in evidence["claim_trajectory"]:
+            lines.append(f"- round {round_idx}: {label}")
+    else:
+        lines.append("- No claim trajectory is available yet.")
+
+    lines.extend(["", "## Branch evidence"])
+    if evidence["branch_counter"]:
+        for branch, count in sorted(evidence["branch_counter"].items(), key=lambda item: (-item[1], item[0])):
+            lines.append(f"- {branch}: seen in {count} successful run(s)")
+    else:
+        lines.append("- No successful branch evidence is available yet.")
 
     lines.extend(["", "## Ranking"])
     if ranked:
