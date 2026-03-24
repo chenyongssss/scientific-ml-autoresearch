@@ -67,6 +67,8 @@ def build_summary(
         f"- Failed: {len(failed)}",
         f"- Seeds configured: {task.seeds if task.seeds else 'none'}",
         f"- Evaluation regimes: {', '.join(regime.name for regime in task.evaluation_regimes) if task.evaluation_regimes else 'default'}",
+        f"- Constraints: {', '.join(task.constraints) if task.constraints else 'none'}",
+        f"- Robustness checks: {', '.join(check.name for check in task.robustness_checks) if task.robustness_checks else 'none'}",
         f"- Round mode: {round_mode or 'unspecified'}",
         "",
         "## Results",
@@ -135,6 +137,16 @@ def build_summary(
             lines.append(f"{idx}. `{result.experiment_id}` — `{metric_name}={result.metrics.get(metric_name)}` — {_format_config_changes(result.config, baseline_config)}")
     else:
         lines.append("No successful runs to rank.")
+
+    lines.extend(["", "## Scientific checks"])
+    if task.constraints:
+        lines.append(f"- Review whether the best run appears consistent with these named constraints: {', '.join(task.constraints)}.")
+    else:
+        lines.append("- No named scientific constraints were provided in the task.")
+    if task.robustness_checks:
+        lines.append(f"- Pending robustness hooks for this task: {', '.join(check.name for check in task.robustness_checks)}.")
+    else:
+        lines.append("- No explicit robustness hooks were provided in the task.")
 
     lines.extend(["", "## Observations"])
     if round_mode is not None:

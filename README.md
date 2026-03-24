@@ -115,6 +115,8 @@ A task file defines:
 - budget
 - optional `seeds`
 - optional `evaluation_regimes`
+- optional `constraints`
+- optional `robustness_checks`
 
 Minimal example:
 
@@ -139,9 +141,43 @@ seeds: [0, 1]
 evaluation_regimes:
   - name: default-grid
   - name: harder-grid
+constraints:
+  - conservation
+robustness_checks:
+  - name: shifted-grid
 ```
 
-### 3. Preview the next round
+### 3. Use constraints and robustness hooks
+
+These fields are lightweight but important if you want the workflow to look more like scientific ML rather than generic config search.
+
+#### `constraints`
+Use this list for domain properties you expect the method to respect, for example:
+
+- conservation
+- positivity
+- stable long-time behavior
+- symmetry preservation
+- shock-capturing quality
+
+The current system does not yet automatically compute these checks, but it does:
+
+- surface them in summaries
+- include them in suggestions
+- encourage you to validate them before overclaiming progress
+
+#### `robustness_checks`
+Use this list for explicit validation hooks, for example:
+
+- shifted-grid
+- noisy-observation
+- sharper-regime
+- lr-perturbation
+- parameter-transfer
+
+The current system uses them as structured reminders in reports and suggestions.
+
+### 4. Preview the next round
 
 ```bash
 autoresearch plan --task runs/advection_demo/task.yaml --preview
@@ -158,7 +194,7 @@ Useful when you want to inspect whether the planner is in:
 
 mode before actually saving or running anything.
 
-### 4. Save a round plan
+### 5. Save a round plan
 
 ```bash
 autoresearch plan --task runs/advection_demo/task.yaml
@@ -176,7 +212,7 @@ The first experiment in each round is the anchor, and its tag encodes the round 
 - `carryover-ablate`
 - `carryover-validate`
 
-### 5. Dry-run before execution
+### 6. Dry-run before execution
 
 ```bash
 autoresearch run --task runs/advection_demo/task.yaml --dry-run
@@ -184,7 +220,7 @@ autoresearch run --task runs/advection_demo/task.yaml --dry-run
 
 This prints the exact experiment configs that would run.
 
-### 6. Execute experiments
+### 7. Execute experiments
 
 ```bash
 autoresearch run --task runs/advection_demo/task.yaml
@@ -197,7 +233,7 @@ By default the runner:
 - executes the evaluation command
 - collects metrics into per-experiment directories
 
-### 7. Summarize results
+### 8. Summarize results
 
 ```bash
 autoresearch summarize --run runs/advection_demo
@@ -211,8 +247,10 @@ The generated summary includes:
 - delta vs round anchor
 - best run in this round
 - best-so-far across all completed rounds
+- named constraints
+- named robustness hooks
 
-### 8. Generate next-step suggestions
+### 9. Generate next-step suggestions
 
 ```bash
 autoresearch suggest --run runs/advection_demo
@@ -223,6 +261,7 @@ Suggestions include:
 - rationale from the current round
 - `next_action_type`
 - actionable next experiments
+- reminders about constraints and robustness hooks
 
 Current action types are:
 
@@ -232,7 +271,7 @@ Current action types are:
 - `validate`
 - `stop`
 
-### 9. Check current status
+### 10. Check current status
 
 ```bash
 autoresearch status --run runs/advection_demo
@@ -248,7 +287,7 @@ This shows:
 - latest suggestion path
 - latest round mode
 
-### 10. Run a multi-round loop
+### 11. Run a multi-round loop
 
 ```bash
 autoresearch loop --task runs/advection_demo/task.yaml --rounds 3
@@ -309,11 +348,9 @@ round_01_suggestions.md
 Compared with baseline, the improvement on `rel_l2` is `0.016800`.
 Compared with the round anchor, the improvement on `rel_l2` is `0.004000`.
 
-## Observations
-- This round was planned in `ablate` mode.
-- The round anchor is `exp_001` with changes: model.width=64.
-- The current best run is `exp_003` with changes: model.width=64, model.depth=3.
-- No failed runs were observed in this round.
+## Scientific checks
+- Review whether the best run appears consistent with these named constraints: conservation, stable long-time behavior.
+- Pending robustness hooks for this task: shifted-grid, noisy-observation.
 ```
 
 ## Current features
@@ -323,8 +360,8 @@ Compared with the round anchor, the improvement on `rel_l2` is `0.004000`.
 - lightweight history-aware carryover of the best previous configuration
 - round 2+ generation that adapts between refinement, ablation, exploration, and validation
 - local execution of train/eval commands
-- markdown round summaries with round mode, config changes, ranking, baseline deltas, and anchor deltas
-- suggestion logic that reasons about anchor gains, top-run gaps, and stopping cases
+- markdown round summaries with round mode, config changes, ranking, baseline deltas, anchor deltas, constraints, and robustness hooks
+- suggestion logic that reasons about anchor gains, top-run gaps, stopping cases, constraints, and robustness hooks
 - reproducible run directories
 - plan preview, run dry-run, and status inspection support
 - more informative loop progress logs with early stopping on `stop`
@@ -359,6 +396,7 @@ Near-term improvements are still focused on practical workflow quality:
 - richer summary/report views
 - more realistic scientific ML adapters
 - optional model-backed suggestion mode
+- explicit claim-strength reporting for scientific conclusions
 
 ## License
 

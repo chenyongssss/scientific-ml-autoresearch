@@ -36,6 +36,11 @@ class EvaluationRegime(BaseModel):
     description: str = ""
 
 
+class RobustnessCheck(BaseModel):
+    name: str
+    description: str = ""
+
+
 class TaskSpec(BaseModel):
     name: str
     description: str = ""
@@ -48,6 +53,8 @@ class TaskSpec(BaseModel):
     reporting: ReportingConfig = Field(default_factory=ReportingConfig)
     seeds: list[int] = Field(default_factory=list)
     evaluation_regimes: list[EvaluationRegime] = Field(default_factory=list)
+    constraints: list[str] = Field(default_factory=list)
+    robustness_checks: list[RobustnessCheck] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
 
 

@@ -34,6 +34,14 @@ evaluation_regimes:
     description: Standard resolution and interpolation setting.
   - name: harder-grid
     description: Slightly more challenging evaluation on a shifted grid.
+constraints:
+  - conservation
+  - stable long-time behavior
+robustness_checks:
+  - name: shifted-grid
+    description: Validate on a mildly shifted grid.
+  - name: noisy-observation
+    description: Add mild observation noise during evaluation.
 notes:
   - prefer stable training
   - prioritize conservation-related observations

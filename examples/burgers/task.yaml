@@ -34,6 +34,14 @@ evaluation_regimes:
     description: Default smooth-to-shock transition setting.
   - name: sharper-shock
     description: Slightly sharper regime for validation.
+constraints:
+  - shock-capturing quality
+  - stable optimization
+robustness_checks:
+  - name: sharper-regime
+    description: Evaluate on a sharper shock transition.
+  - name: lr-perturbation
+    description: Check sensitivity to a small learning-rate shift.
 notes:
   - prioritize stable optimization
   - watch whether smoothness helps or oversmooths

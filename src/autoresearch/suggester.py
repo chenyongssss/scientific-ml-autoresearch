@@ -90,6 +90,16 @@ def build_suggestions(task: TaskSpec, results: list[ExperimentResult]) -> Sugges
             actions.append("Because the top runs are tied, prefer the simpler configuration or run another discriminating evaluation.")
             next_action_type = "validate"
 
+    if task.constraints:
+        constraint_text = ", ".join(task.constraints[:3])
+        actions.append(f"Check whether the current best configuration still respects the task constraints: {constraint_text}.")
+
+    if task.robustness_checks:
+        robustness_names = ", ".join(check.name for check in task.robustness_checks[:2])
+        actions.append(f"Run the listed robustness checks on the best configuration: {robustness_names}.")
+        if next_action_type == "exploit":
+            next_action_type = "validate"
+
     if improvement is not None and improvement <= 1e-6:
         rationale_parts.append("This round did not produce a meaningful improvement over the anchor.")
         actions.append("Pause aggressive exploration and either stop here or switch to validation-only checks.")
