@@ -34,18 +34,60 @@ def _best_result(results: list[ExperimentResult], metric_name: str, lower_is_bet
     return sorted(completed, key=lambda r: _metric_value(r, metric_name, lower_is_better), reverse=not lower_is_better)[0]
 
 
-def _claim_strength(task: TaskSpec, results: list[ExperimentResult], metric_name: str, lower_is_better: bool) -> str:
+def _round_improvement(results: list[ExperimentResult], metric_name: str, lower_is_better: bool) -> float | None:
+    completed = [r for r in results if r.status == "ok" and metric_name in r.metrics]
+    anchor = _anchor_result(results)
+    if not completed or anchor is None:
+        return None
+    best = sorted(completed, key=lambda r: _metric_value(r, metric_name, lower_is_better), reverse=not lower_is_better)[0]
+    return anchor.metrics[metric_name] - best.metrics[metric_name] if lower_is_better else best.metrics[metric_name] - anchor.metrics[metric_name]
+
+
+def _historical_evidence(task: TaskSpec, historical_results: list[ExperimentResult], current_results: list[ExperimentResult]) -> dict:
+    metric_name = task.reporting.sort_by or (task.metrics.primary[0] if task.metrics.primary else "score")
+    lower_is_better = task.reporting.lower_is_better
+    all_rounds: dict[int, list[ExperimentResult]] = {}
+    for result in historical_results + current_results:
+        all_rounds.setdefault(result.round_index, []).append(result)
+
+    positive_rounds = 0
+    non_improving_rounds = 0
+    best_history = None
+    trajectory = []
+    for round_index in sorted(all_rounds):
+        round_results = all_rounds[round_index]
+        improvement = _round_improvement(round_results, metric_name, lower_is_better)
+        if improvement is not None and improvement > 1e-6:
+            positive_rounds += 1
+        elif improvement is not None:
+            non_improving_rounds += 1
+        best_round = _best_result(round_results, metric_name, lower_is_better)
+        if best_round is not None:
+            trajectory.append((round_index, best_round.metrics[metric_name]))
+            if best_history is None:
+                best_history = best_round.metrics[metric_name]
+    return {
+        "positive_rounds": positive_rounds,
+        "non_improving_rounds": non_improving_rounds,
+        "trajectory": trajectory,
+    }
+
+
+def _claim_strength(task: TaskSpec, results: list[ExperimentResult], historical_results: list[ExperimentResult], metric_name: str, lower_is_better: bool) -> str:
     completed = [r for r in results if r.status == "ok" and metric_name in r.metrics]
     anchor = _anchor_result(results)
     if not completed or anchor is None:
         return "uncertain"
-    best = sorted(completed, key=lambda r: r.metrics[metric_name], reverse=not lower_is_better)[0]
-    improvement = anchor.metrics[metric_name] - best.metrics[metric_name] if lower_is_better else best.metrics[metric_name] - anchor.metrics[metric_name]
+    improvement = _round_improvement(results, metric_name, lower_is_better) or 0.0
+    evidence = _historical_evidence(task, historical_results, results)
+    positive_rounds = evidence["positive_rounds"]
     if task.robustness_checks or task.constraints:
-        if improvement > 0.01 and len(completed) >= 3:
+        if improvement > 0.01 and positive_rounds >= 2 and len(completed) >= 3:
             return "supported"
-        return "needs-validation"
-    if improvement > 0.01:
+        if improvement > 0:
+            return "needs-validation"
+        return "uncertain"
+    if improvement > 0.01 and positive_rounds >= 2:
         return "supported"
     if improvement > 0:
         return "observed"
@@ -71,7 +113,8 @@ def build_summary(
     ranked = sorted(completed, key=lambda r: _metric_value(r, metric_name, lower_is_better), reverse=not lower_is_better)
     best = ranked[0] if ranked else None
     best_so_far = _best_result(historical_results + results, metric_name, lower_is_better)
-    claim_strength = _claim_strength(task, results, metric_name, lower_is_better)
+    claim_strength = _claim_strength(task, results, historical_results, metric_name, lower_is_better)
+    evidence = _historical_evidence(task, historical_results, results)
 
     lines = [
         f"# Round {round_index} Summary",
@@ -90,6 +133,8 @@ def build_summary(
         f"- Robustness checks: {', '.join(check.name for check in task.robustness_checks) if task.robustness_checks else 'none'}",
         f"- Round mode: {round_mode or 'unspecified'}",
         f"- Claim strength: {claim_strength}",
+        f"- Positive rounds so far: {evidence['positive_rounds']}",
+        f"- Non-improving rounds so far: {evidence['non_improving_rounds']}",
         "",
         "## Results",
         "",
@@ -154,14 +199,18 @@ def build_summary(
     lines.extend(["", "## Claim assessment"])
     lines.append(f"- Observed: the current round produced measurable outcomes for `{metric_name}` across {len(completed)} completed run(s).")
     if claim_strength == "supported":
-        lines.append("- Supported: the current improvement is large enough to treat as a meaningful working result under the present checks.")
+        lines.append("- Supported: the current improvement has now repeated strongly enough across rounds to be treated as a working result under the present checks.")
     elif claim_strength == "observed":
-        lines.append("- Supported: a positive effect was observed, but the evidence is still narrow.")
+        lines.append("- Supported: a positive effect was observed, but the evidence is still narrow and mostly local to this round.")
     elif claim_strength == "needs-validation":
-        lines.append("- Supported: there is a promising effect, but constraints or robustness checks mean the result still needs explicit validation.")
+        lines.append("- Supported: there is a promising effect, but constraints, robustness hooks, or limited repetition mean the result still needs explicit validation.")
     else:
         lines.append("- Supported: no strong supported claim should be made yet.")
     lines.append("- Uncertain: generalization beyond the tested settings remains unresolved unless additional validation is run.")
+    if evidence["positive_rounds"] >= 2:
+        lines.append("- Historical evidence: at least two rounds have shown positive movement relative to their anchors.")
+    else:
+        lines.append("- Historical evidence: repeated positive evidence has not yet accumulated across rounds.")
     if task.robustness_checks or task.evaluation_regimes or task.constraints:
         lines.append("- Next validation needed: run the named scientific checks before treating the improvement as robust.")
     else:

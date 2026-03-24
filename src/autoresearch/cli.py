@@ -11,7 +11,8 @@ from .planner import build_round_plan
 from .runner import execute_plan
 from .schemas import HistoryEntry, infer_run_root
 from .storage import load_history, load_plan, load_task, save_history, save_plan
-from .summarizer import build_summary, save_summary
+from .summarizer import build_summary
+from .summarizer import save_summary
 from .suggester import build_suggestions, render_suggestions
 from .utils import round_plan_path, round_summary_path, round_suggestions_path
 
@@ -122,7 +123,8 @@ def suggest(run: Path = typer.Option(..., help="Run directory"), round_index: in
     if not history.entries:
         raise typer.BadParameter("No history available to suggest from")
     entry = history.entries[-1] if round_index is None else next(e for e in history.entries if e.round_index == round_index)
-    suggestion = build_suggestions(task_spec, entry.experiments)
+    historical_results = [r for e in history.entries if e.round_index < entry.round_index for r in e.experiments]
+    suggestion = build_suggestions(task_spec, entry.experiments, historical_results=historical_results)
     path = round_suggestions_path(run, entry.round_index)
     path.write_text(render_suggestions(suggestion, entry.round_index), encoding="utf-8")
     entry.suggestion_path = str(path)
