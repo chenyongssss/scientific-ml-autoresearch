@@ -10,6 +10,8 @@ def test_suggestions_reference_anchor_gain():
         metrics={"primary": ["rel_l2"]},
         planner={"baseline": {"model.width": 32}},
         reporting={"sort_by": "rel_l2", "lower_is_better": True},
+        constraints=["conservation"],
+        robustness_checks=[{"name": "shifted-grid"}],
     )
     results = [
         ExperimentResult(experiment_id="exp_001", round_index=2, status="ok", metrics={"rel_l2": 0.2}, config={"model.width": 64}, run_dir="a"),
@@ -18,7 +20,8 @@ def test_suggestions_reference_anchor_gain():
     ]
     suggestion = build_suggestions(task, results)
     assert "round anchor" in suggestion.rationale
-    assert any("harder evaluation" in action for action in suggestion.actions)
+    assert "claim strength" in suggestion.rationale.lower()
+    assert any("robustness checks" in action for action in suggestion.actions)
 
 
 def test_suggestions_can_trigger_stop_when_no_improvement():

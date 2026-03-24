@@ -29,6 +29,26 @@ def _round_improvement(task: TaskSpec, results: list[ExperimentResult]) -> float
     return anchor.metrics[metric_name] - best.metrics[metric_name] if lower_is_better else best.metrics[metric_name] - anchor.metrics[metric_name]
 
 
+def _claim_strength(task: TaskSpec, results: list[ExperimentResult]) -> str:
+    metric_name = _metric_name(task)
+    lower_is_better = task.reporting.lower_is_better
+    completed = _sorted_completed(task, results)
+    anchor = next((r for r in results if r.status == "ok" and r.experiment_id == "exp_001" and metric_name in r.metrics), None)
+    if not completed or anchor is None:
+        return "uncertain"
+    best = completed[0]
+    improvement = anchor.metrics[metric_name] - best.metrics[metric_name] if lower_is_better else best.metrics[metric_name] - anchor.metrics[metric_name]
+    if task.robustness_checks or task.constraints:
+        if improvement > 0.01 and len(completed) >= 3:
+            return "supported"
+        return "needs-validation"
+    if improvement > 0.01:
+        return "supported"
+    if improvement > 0:
+        return "observed"
+    return "uncertain"
+
+
 def build_suggestions(task: TaskSpec, results: list[ExperimentResult]) -> Suggestion:
     metric_name = _metric_name(task)
     lower_is_better = task.reporting.lower_is_better
@@ -51,6 +71,7 @@ def build_suggestions(task: TaskSpec, results: list[ExperimentResult]) -> Sugges
     changed = _changed_keys(best.config, baseline)
     primary_change = changed[0] if changed else "the current baseline configuration"
     improvement = _round_improvement(task, results)
+    claim_strength = _claim_strength(task, results)
 
     rationale_parts = [f"{best.experiment_id} currently performs best on `{metric_name}`."]
     actions = [f"Repeat {best.experiment_id} with another seed to check stability."]
@@ -89,6 +110,14 @@ def build_suggestions(task: TaskSpec, results: list[ExperimentResult]) -> Sugges
         if abs(gap) < 1e-8:
             actions.append("Because the top runs are tied, prefer the simpler configuration or run another discriminating evaluation.")
             next_action_type = "validate"
+
+    rationale_parts.append(f"Current claim strength is `{claim_strength}`.")
+    if claim_strength == "needs-validation":
+        actions.append("Do not treat this as a robust conclusion yet; prioritize explicit validation next.")
+        next_action_type = "validate"
+    elif claim_strength == "uncertain":
+        actions.append("Treat the current result as exploratory only; avoid making strong claims.")
+        next_action_type = "stop" if improvement is not None and improvement <= 1e-6 else "explore"
 
     if task.constraints:
         constraint_text = ", ".join(task.constraints[:3])

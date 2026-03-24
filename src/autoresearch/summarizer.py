@@ -34,6 +34,24 @@ def _best_result(results: list[ExperimentResult], metric_name: str, lower_is_bet
     return sorted(completed, key=lambda r: _metric_value(r, metric_name, lower_is_better), reverse=not lower_is_better)[0]
 
 
+def _claim_strength(task: TaskSpec, results: list[ExperimentResult], metric_name: str, lower_is_better: bool) -> str:
+    completed = [r for r in results if r.status == "ok" and metric_name in r.metrics]
+    anchor = _anchor_result(results)
+    if not completed or anchor is None:
+        return "uncertain"
+    best = sorted(completed, key=lambda r: r.metrics[metric_name], reverse=not lower_is_better)[0]
+    improvement = anchor.metrics[metric_name] - best.metrics[metric_name] if lower_is_better else best.metrics[metric_name] - anchor.metrics[metric_name]
+    if task.robustness_checks or task.constraints:
+        if improvement > 0.01 and len(completed) >= 3:
+            return "supported"
+        return "needs-validation"
+    if improvement > 0.01:
+        return "supported"
+    if improvement > 0:
+        return "observed"
+    return "uncertain"
+
+
 def build_summary(
     task: TaskSpec,
     round_index: int,
@@ -53,6 +71,7 @@ def build_summary(
     ranked = sorted(completed, key=lambda r: _metric_value(r, metric_name, lower_is_better), reverse=not lower_is_better)
     best = ranked[0] if ranked else None
     best_so_far = _best_result(historical_results + results, metric_name, lower_is_better)
+    claim_strength = _claim_strength(task, results, metric_name, lower_is_better)
 
     lines = [
         f"# Round {round_index} Summary",
@@ -70,6 +89,7 @@ def build_summary(
         f"- Constraints: {', '.join(task.constraints) if task.constraints else 'none'}",
         f"- Robustness checks: {', '.join(check.name for check in task.robustness_checks) if task.robustness_checks else 'none'}",
         f"- Round mode: {round_mode or 'unspecified'}",
+        f"- Claim strength: {claim_strength}",
         "",
         "## Results",
         "",
@@ -130,6 +150,22 @@ def build_summary(
         lines.append(f"Best-so-far config snapshot: `{_format_config_changes(best_so_far.config, baseline_config)}`.")
     else:
         lines.append("No best-so-far record is available yet.")
+
+    lines.extend(["", "## Claim assessment"])
+    lines.append(f"- Observed: the current round produced measurable outcomes for `{metric_name}` across {len(completed)} completed run(s).")
+    if claim_strength == "supported":
+        lines.append("- Supported: the current improvement is large enough to treat as a meaningful working result under the present checks.")
+    elif claim_strength == "observed":
+        lines.append("- Supported: a positive effect was observed, but the evidence is still narrow.")
+    elif claim_strength == "needs-validation":
+        lines.append("- Supported: there is a promising effect, but constraints or robustness checks mean the result still needs explicit validation.")
+    else:
+        lines.append("- Supported: no strong supported claim should be made yet.")
+    lines.append("- Uncertain: generalization beyond the tested settings remains unresolved unless additional validation is run.")
+    if task.robustness_checks or task.evaluation_regimes or task.constraints:
+        lines.append("- Next validation needed: run the named scientific checks before treating the improvement as robust.")
+    else:
+        lines.append("- Next validation needed: add at least one harder or shifted evaluation before making broader claims.")
 
     lines.extend(["", "## Ranking"])
     if ranked:
