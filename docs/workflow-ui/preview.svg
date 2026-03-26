@@ -1,0 +1,91 @@
+<svg width="1280" height="720" viewBox="0 0 1280 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="120" y1="40" x2="1140" y2="680" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0E1E3F"/>
+      <stop offset="1" stop-color="#07111F"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="180" y1="140" x2="1110" y2="630" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#13284F" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#0A1730" stop-opacity="0.98"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(210 120) rotate(24) scale(320 220)">
+      <stop stop-color="#60A5FA" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#60A5FA" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1040 160) rotate(18) scale(240 180)">
+      <stop stop-color="#A78BFA" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#A78BFA" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="88" y="88" width="1104" height="584" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="24" stdDeviation="24" flood-color="#000000" flood-opacity="0.36"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="720" rx="28" fill="#06101C"/>
+  <rect width="1280" height="720" rx="28" fill="url(#bg)"/>
+  <rect width="1280" height="720" rx="28" fill="url(#glowA)"/>
+  <rect width="1280" height="720" rx="28" fill="url(#glowB)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="120" y="112" width="1040" height="496" rx="28" fill="url(#panel)" stroke="rgba(255,255,255,0.08)"/>
+  </g>
+
+  <rect x="156" y="148" width="210" height="34" rx="17" fill="#13233F" stroke="#2A456F"/>
+  <text x="180" y="170" fill="#9EB0D1" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="13" letter-spacing="2.2">EVIDENCE-AWARE WORKFLOW</text>
+
+  <text x="156" y="240" fill="#E8EFFF" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="60" font-weight="700">scientific-ml-</text>
+  <text x="156" y="304" fill="#E8EFFF" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="60" font-weight="700">autoresearch</text>
+  <text x="156" y="354" fill="#9EB0D1" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="20">Branch-aware planning, evidence bundles, scientific checks, persisted evidence state, and resumable execution.</text>
+
+  <g transform="translate(156 402)">
+    <rect width="164" height="40" rx="20" fill="#0F203E" stroke="#284A79"/>
+    <text x="22" y="26" fill="#D7E4FF" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="15">Plan / Run / Summarize</text>
+  </g>
+  <g transform="translate(336 402)">
+    <rect width="146" height="40" rx="20" fill="#0F203E" stroke="#284A79"/>
+    <text x="22" y="26" fill="#D7E4FF" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="15">Suggest / Loop</text>
+  </g>
+  <g transform="translate(496 402)">
+    <rect width="202" height="40" rx="20" fill="#0F203E" stroke="#284A79"/>
+    <text x="22" y="26" fill="#D7E4FF" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="15">Persisted evidence state</text>
+  </g>
+
+  <rect x="760" y="164" width="356" height="160" rx="22" fill="#0D1A33" stroke="#223B63"/>
+  <text x="788" y="198" fill="#E8EFFF" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="22" font-weight="600">Round snapshot</text>
+  <text x="788" y="234" fill="#9EB0D1" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="14">Claim taxonomy</text>
+  <text x="788" y="266" fill="#4ADE80" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="32" font-weight="700">validated</text>
+  <text x="942" y="234" fill="#9EB0D1" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="14">Branches</text>
+  <text x="942" y="266" fill="#E8EFFF" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="32" font-weight="700">2</text>
+  <text x="1044" y="234" fill="#9EB0D1" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="14">Experiments</text>
+  <text x="1044" y="266" fill="#E8EFFF" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="32" font-weight="700">4</text>
+  <rect x="788" y="286" width="300" height="10" rx="5" fill="#132540"/>
+  <rect x="788" y="286" width="226" height="10" rx="5" fill="#60A5FA"/>
+  <text x="788" y="315" fill="#9EB0D1" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="13">Best branch under aggregated evidence</text>
+
+  <rect x="760" y="344" width="356" height="212" rx="22" fill="#0D1A33" stroke="#223B63"/>
+  <text x="788" y="378" fill="#E8EFFF" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="22" font-weight="600">Branch evidence cards</text>
+
+  <g transform="translate(788 404)">
+    <rect width="300" height="42" rx="14" fill="#10213F"/>
+    <text x="16" y="18" fill="#E8EFFF" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="14" font-weight="600">model.width + conservation</text>
+    <text x="16" y="33" fill="#9EB0D1" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="12">mean 0.0462 · std 0.0021 · completed 4 / 4</text>
+    <rect x="226" y="10" width="58" height="22" rx="11" fill="#123524"/>
+    <text x="238" y="25" fill="#4ADE80" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="11" font-weight="700">validated</text>
+  </g>
+
+  <g transform="translate(788 456)">
+    <rect width="300" height="42" rx="14" fill="#10213F"/>
+    <text x="16" y="18" fill="#E8EFFF" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="14" font-weight="600">model.width</text>
+    <text x="16" y="33" fill="#9EB0D1" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="12">mean 0.0529 · std 0.0044 · completed 2 / 3</text>
+    <rect x="226" y="10" width="62" height="22" rx="11" fill="#3A2C12"/>
+    <text x="239" y="25" fill="#FBBF24" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="11" font-weight="700">promising</text>
+  </g>
+
+  <g transform="translate(788 508)">
+    <rect width="300" height="42" rx="14" fill="#10213F"/>
+    <text x="16" y="18" fill="#E8EFFF" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="14" font-weight="600">baseline</text>
+    <text x="16" y="33" fill="#9EB0D1" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="12">mean 0.0614 · std 0.0000 · completed 1 / 1</text>
+    <rect x="230" y="10" width="56" height="22" rx="11" fill="#112C45"/>
+    <text x="241" y="25" fill="#60A5FA" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="11" font-weight="700">observed</text>
+  </g>
+</svg>

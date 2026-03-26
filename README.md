@@ -4,9 +4,12 @@ English | [简体中文](./README.zh-CN.md)
 
 A complete, lightweight, evidence-aware auto-research workflow for scientific machine learning.
 
+[![Workflow UI preview](./docs/workflow-ui/preview.svg)](./docs/workflow-ui/index.html)
+
 ## Quick links
 
 - **Static UI**: `docs/workflow-ui/index.html`
+- **GitHub Pages**: repository Pages deployment from `docs/`
 - **Task format**: `docs/task-format.md`
 - **Extension notes**: `docs/extending.md`
 - **Examples**: `examples/advection/`, `examples/burgers/`

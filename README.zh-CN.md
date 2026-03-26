@@ -4,9 +4,12 @@
 
 一个完整、轻量、证据感知型的 scientific machine learning 自动研究工作流。
 
+[![Workflow UI 预览](./docs/workflow-ui/preview.svg)](./docs/workflow-ui/index.html)
+
 ## 快速入口
 
 - **静态界面**: `docs/workflow-ui/index.html`
+- **GitHub Pages**: 从 `docs/` 目录部署的仓库页面
 - **任务格式**: `docs/task-format.md`
 - **扩展说明**: `docs/extending.md`
 - **示例**: `examples/advection/`, `examples/burgers/`
