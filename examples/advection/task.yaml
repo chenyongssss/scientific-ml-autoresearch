@@ -35,11 +35,19 @@ evaluation_regimes:
   - name: harder-grid
     description: Slightly more challenging evaluation on a shifted grid.
 constraints:
-  - conservation
-  - stable long-time behavior
+  - name: conservation
+    description: Keep mass drift small enough to support a conservative claim.
+    metric: conservation_error
+    threshold: 0.001
+    direction: lower_is_better
+  - name: stable long-time behavior
+    description: Still tracked as a named reminder until a concrete metric is added.
 robustness_checks:
   - name: shifted-grid
     description: Validate on a mildly shifted grid.
+    eval_command: "python evaluate_shifted.py --run-dir {run_dir} --output {output_path}"
+    output_file: shifted_grid.json
+    metrics: [rel_l2_shifted, conservation_error_shifted]
   - name: noisy-observation
     description: Add mild observation noise during evaluation.
 notes:

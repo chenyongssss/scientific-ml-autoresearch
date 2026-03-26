@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 
+from .evidence import aggregate_branch_evidence, branch_label as evidence_branch_label, claim_taxonomy_from_cards
 from .schemas import ExperimentResult, TaskSpec
 
 
@@ -15,8 +16,7 @@ def _format_config_changes(config: dict, baseline: dict) -> str:
 
 
 def _branch_label(config: dict, baseline: dict) -> str:
-    changed = sorted(key for key, value in config.items() if baseline.get(key) != value)
-    return "+".join(changed) if changed else "baseline"
+    return evidence_branch_label(config, baseline)
 
 
 def _metric_value(result: ExperimentResult, metric_name: str, lower_is_better: bool):
@@ -74,15 +74,8 @@ def _historical_evidence(task: TaskSpec, historical_results: list[ExperimentResu
         best_round = _best_result(round_results, metric_name, lower_is_better)
         if best_round is not None:
             trajectory.append((round_index, best_round.metrics[metric_name], _branch_label(best_round.config, baseline)))
-            if improvement is None:
-                claim_label = "uncertain"
-            elif improvement > 0.01:
-                claim_label = "supported" if positive_rounds >= 2 else "needs-validation"
-            elif improvement > 0:
-                claim_label = "observed"
-            else:
-                claim_label = "uncertain"
-            claim_trajectory.append((round_index, claim_label))
+            cards = aggregate_branch_evidence(task, round_results)
+            claim_trajectory.append((round_index, claim_taxonomy_from_cards(cards)))
 
     return {
         "positive_rounds": positive_rounds,
@@ -93,6 +86,22 @@ def _historical_evidence(task: TaskSpec, historical_results: list[ExperimentResu
     }
 
 
+def _check_counts(results: list[ExperimentResult]) -> dict[str, int]:
+    counts = {"passed": 0, "failed": 0, "pending": 0, "missing": 0, "error": 0}
+    for result in results:
+        for check in result.scientific_checks:
+            counts[check.status] = counts.get(check.status, 0) + 1
+    return counts
+
+
+def _required_constraints_satisfied(result: ExperimentResult, task: TaskSpec) -> bool:
+    required_names = {constraint.name for constraint in task.constraints if constraint.required and constraint.metric is not None}
+    if not required_names:
+        return True
+    status_by_name = {check.name: check.status for check in result.scientific_checks if check.kind == "constraint"}
+    return all(status_by_name.get(name) == "passed" for name in required_names)
+
+
 def _claim_strength(task: TaskSpec, results: list[ExperimentResult], historical_results: list[ExperimentResult], metric_name: str, lower_is_better: bool) -> str:
     completed = [r for r in results if r.status == "ok" and metric_name in r.metrics]
     anchor = _anchor_result(results)
@@ -101,6 +110,10 @@ def _claim_strength(task: TaskSpec, results: list[ExperimentResult], historical_
     improvement = _round_improvement(results, metric_name, lower_is_better) or 0.0
     evidence = _historical_evidence(task, historical_results, results)
     positive_rounds = evidence["positive_rounds"]
+    failed_required_constraints = any(not _required_constraints_satisfied(result, task) for result in completed)
+    any_robustness_failed = any(check.kind == "robustness" and check.status in {"failed", "error"} for result in completed for check in result.scientific_checks)
+    if failed_required_constraints or any_robustness_failed:
+        return "needs-validation"
     if task.robustness_checks or task.constraints:
         if improvement > 0.01 and positive_rounds >= 2 and len(completed) >= 3:
             return "supported"
@@ -135,6 +148,9 @@ def build_summary(
     best_so_far = _best_result(historical_results + results, metric_name, lower_is_better)
     evidence = _historical_evidence(task, historical_results, results)
     claim_strength = _claim_strength(task, results, historical_results, metric_name, lower_is_better)
+    check_counts = _check_counts(results)
+    branch_cards = aggregate_branch_evidence(task, results)
+    best_card = branch_cards[0] if branch_cards else None
 
     lines = [
         f"# Round {round_index} Summary",
@@ -149,17 +165,21 @@ def build_summary(
         f"- Failed: {len(failed)}",
         f"- Seeds configured: {task.seeds if task.seeds else 'none'}",
         f"- Evaluation regimes: {', '.join(regime.name for regime in task.evaluation_regimes) if task.evaluation_regimes else 'default'}",
-        f"- Constraints: {', '.join(task.constraints) if task.constraints else 'none'}",
+        f"- Constraints: {', '.join(constraint.name for constraint in task.constraints) if task.constraints else 'none'}",
         f"- Robustness checks: {', '.join(check.name for check in task.robustness_checks) if task.robustness_checks else 'none'}",
         f"- Round mode: {round_mode or 'unspecified'}",
         f"- Claim strength: {claim_strength}",
+        f"- Claim taxonomy: {claim_taxonomy_from_cards(branch_cards)}",
         f"- Positive rounds so far: {evidence['positive_rounds']}",
         f"- Non-improving rounds so far: {evidence['non_improving_rounds']}",
+        f"- Scientific checks passed: {check_counts['passed']}",
+        f"- Scientific checks failed: {check_counts['failed']}",
+        f"- Scientific checks pending/missing/error: {check_counts['pending'] + check_counts['missing'] + check_counts['error']}",
         "",
         "## Results",
         "",
-        "| Rank | Exp ID | Changes vs baseline | Status | Primary Metric | Delta vs baseline | Delta vs anchor | Secondary Metrics | Notes |",
-        "|---:|---|---|---|---:|---:|---:|---|---|",
+        "| Rank | Exp ID | Changes vs baseline | Status | Primary Metric | Delta vs baseline | Delta vs anchor | Secondary Metrics | Scientific checks | Notes |",
+        "|---:|---|---|---|---:|---:|---:|---|---|---|",
     ]
 
     rank_lookup = {result.experiment_id: idx for idx, result in enumerate(ranked, start=1)}
@@ -173,6 +193,7 @@ def build_summary(
             if key in result.metrics:
                 secondary_parts.append(f"{key}={result.metrics[key]}")
         secondary_text = ", ".join(secondary_parts) if secondary_parts else "-"
+        scientific_check_text = ", ".join(f"{check.name}:{check.status}" for check in result.scientific_checks) if result.scientific_checks else "-"
         note = result.error or ""
         changes = _format_config_changes(result.config, baseline_config)
         rank_text = str(rank_lookup.get(result.experiment_id, "-"))
@@ -185,7 +206,7 @@ def build_summary(
             delta = anchor_value - primary_value if lower_is_better else primary_value - anchor_value
             delta_anchor_text = f"{delta:.6f}"
         lines.append(
-            f"| {rank_text} | {result.experiment_id} | {changes} | {result.status} | {primary_value} | {delta_baseline_text} | {delta_anchor_text} | {secondary_text} | {note} |"
+            f"| {rank_text} | {result.experiment_id} | {changes} | {result.status} | {primary_value} | {delta_baseline_text} | {delta_anchor_text} | {secondary_text} | {scientific_check_text} | {note} |"
         )
 
     lines.extend(["", "## Best Run"])
@@ -207,6 +228,24 @@ def build_summary(
     else:
         lines.append("No successful runs were available for comparison.")
 
+    lines.extend(["", "## Aggregated branch evidence"])
+    if best_card is not None:
+        lines.append(
+            f"Best branch by aggregated evidence: `{best_card['branch_label']}` with mean `{metric_name}={best_card['mean']:.6f}` and std `{best_card['std']:.6f}` across {best_card['count']} run(s)."
+        )
+    if branch_cards:
+        lines.append("")
+        lines.append("| Branch | Mean | Std | Best | Runs | Seeds | Regimes | Constraint pass rate | Robustness pass rate | Evidence status |")
+        lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---|")
+        for card in branch_cards:
+            constraint_rate = "-" if card["constraint_pass_rate"] is None else f"{card['constraint_pass_rate']:.2f}"
+            robustness_rate = "-" if card["robustness_pass_rate"] is None else f"{card['robustness_pass_rate']:.2f}"
+            lines.append(
+                f"| {card['branch_label']} | {card['mean']:.6f} | {card['std']:.6f} | {float(card['best']):.6f} | {card['count']} | {card['seed_count']} | {card['regime_count']} | {constraint_rate} | {robustness_rate} | {card['evidence_status']} |"
+            )
+    else:
+        lines.append("No aggregated branch evidence is available yet.")
+
     lines.extend(["", "## Best So Far"])
     if best_so_far is not None:
         lines.append(
@@ -218,12 +257,13 @@ def build_summary(
 
     lines.extend(["", "## Claim assessment"])
     lines.append(f"- Observed: the current round produced measurable outcomes for `{metric_name}` across {len(completed)} completed run(s).")
+    lines.append(f"- Taxonomy: the best current branch is classified as `{claim_taxonomy_from_cards(branch_cards)}` under aggregated evidence.")
     if claim_strength == "supported":
         lines.append("- Supported: the current improvement has now repeated strongly enough across rounds to be treated as a working result under the present checks.")
     elif claim_strength == "observed":
         lines.append("- Supported: a positive effect was observed, but the evidence is still narrow and mostly local to this round.")
     elif claim_strength == "needs-validation":
-        lines.append("- Supported: there is a promising effect, but constraints, robustness hooks, or limited repetition mean the result still needs explicit validation.")
+        lines.append("- Supported: there is a promising effect, but scientific checks still contain failed, missing, or incomplete evidence, so the result needs explicit validation.")
     else:
         lines.append("- Supported: no strong supported claim should be made yet.")
     lines.append("- Uncertain: generalization beyond the tested settings remains unresolved unless additional validation is run.")
@@ -232,7 +272,7 @@ def build_summary(
     else:
         lines.append("- Historical evidence: repeated positive evidence has not yet accumulated across rounds.")
     if task.robustness_checks or task.evaluation_regimes or task.constraints:
-        lines.append("- Next validation needed: run the named scientific checks before treating the improvement as robust.")
+        lines.append("- Next validation needed: run or complete the named scientific checks before treating the improvement as robust.")
     else:
         lines.append("- Next validation needed: add at least one harder or shifted evaluation before making broader claims.")
 
@@ -259,13 +299,42 @@ def build_summary(
 
     lines.extend(["", "## Scientific checks"])
     if task.constraints:
-        lines.append(f"- Review whether the best run appears consistent with these named constraints: {', '.join(task.constraints)}.")
+        for constraint in task.constraints:
+            if constraint.metric is not None and constraint.threshold is not None:
+                lines.append(
+                    f"- Constraint `{constraint.name}`: metric `{constraint.metric}` should be {constraint.direction.replace('_', ' ')} `{constraint.threshold}`."
+                )
+            else:
+                lines.append(f"- Constraint `{constraint.name}`: named only, not yet executable.")
     else:
         lines.append("- No named scientific constraints were provided in the task.")
     if task.robustness_checks:
-        lines.append(f"- Pending robustness hooks for this task: {', '.join(check.name for check in task.robustness_checks)}.")
+        for check in task.robustness_checks:
+            if check.eval_command:
+                lines.append(f"- Robustness `{check.name}`: executable hook configured.")
+            else:
+                lines.append(f"- Robustness `{check.name}`: reminder only; no eval command configured yet.")
     else:
         lines.append("- No explicit robustness hooks were provided in the task.")
+
+    lines.extend(["", "## Per-experiment scientific check details"])
+    detail_lines = 0
+    for result in results:
+        if not result.scientific_checks:
+            continue
+        lines.append(f"- `{result.experiment_id}`")
+        detail_lines += 1
+        for check in result.scientific_checks:
+            summary = f"  - {check.kind}:{check.name} -> {check.status}"
+            if check.metric is not None:
+                summary += f" ({check.metric}={check.value}, threshold={check.threshold})"
+            elif check.metrics:
+                summary += f" (metrics={check.metrics})"
+            if check.details:
+                summary += f" — {check.details}"
+            lines.append(summary)
+    if detail_lines == 0:
+        lines.append("- No per-experiment scientific check details are available yet.")
 
     lines.extend(["", "## Observations"])
     if round_mode is not None:
@@ -274,6 +343,10 @@ def build_summary(
         lines.append(f"- The round anchor is `{anchor_result.experiment_id}` with changes: {_format_config_changes(anchor_result.config, baseline_config)}.")
     if best is not None:
         lines.append(f"- The current best run is `{best.experiment_id}` with changes: {_format_config_changes(best.config, baseline_config)}.")
+    if best_card is not None:
+        lines.append(
+            f"- Aggregated evidence currently favors branch `{best_card['branch_label']}` with status `{best_card['evidence_status']}` over {best_card['count']} run(s)."
+        )
     if best_so_far is not None and best is not None and best_so_far.experiment_id == best.experiment_id and best_so_far.round_index == best.round_index:
         lines.append("- This round produced the current best-so-far result.")
     if failed:
@@ -284,6 +357,10 @@ def build_summary(
         lines.append("- At least two completed runs are available for local comparison.")
     if baseline_result is None:
         lines.append("- No successful baseline run was found, so relative improvement should be interpreted cautiously.")
+    if check_counts["failed"] > 0 or check_counts["error"] > 0:
+        lines.append("- At least one scientific check failed or errored; do not overclaim the current best metric.")
+    elif check_counts["pending"] > 0 or check_counts["missing"] > 0:
+        lines.append("- Some scientific checks are still pending or missing; evidence quality is incomplete.")
 
     return "\n".join(lines) + "\n"
 

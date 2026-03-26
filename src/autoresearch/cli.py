@@ -10,8 +10,9 @@ from .loop import run_loop
 from .planner import build_round_plan
 from .runner import execute_plan
 from .schemas import HistoryEntry, infer_run_root
-from .storage import load_history, load_plan, load_task, save_history, save_plan
+from .storage import load_history, load_latest_evidence_state, load_plan, load_task, save_evidence_state, save_history, save_plan
 from .summarizer import build_summary, save_summary
+from .evidence import build_evidence_state
 from .suggester import build_suggestions, render_suggestions
 from .utils import round_plan_path, round_summary_path, round_suggestions_path
 
@@ -73,15 +74,19 @@ def plan(task: Path = typer.Option(..., help="Path to task.yaml"), preview: bool
     round_mode = _round_mode_from_plan(round_plan)
     if preview:
         console.print(f"Preview for round {round_plan.round_index} (mode={round_mode}):")
+        for branch in round_plan.branches:
+            console.print(f"- {branch.id}: {branch.tag} :: runs={branch.planned_evidence_runs} :: {branch.notes[0] if branch.notes else ''}")
         for exp in round_plan.experiments:
-            console.print(f"- {exp.id}: {exp.tag} :: {exp.notes[0] if exp.notes else ''}")
+            console.print(f"  - {exp.id}: {exp.tag} [{exp.branch_id}] :: {exp.notes[0] if exp.notes else ''}")
         return
     path = round_plan_path(run_root, round_plan.round_index)
     save_plan(path, round_plan)
     console.print(f"Saved round plan to [green]{path}[/green]")
     console.print(f"Round mode: {round_mode}")
+    for branch in round_plan.branches:
+        console.print(f"- {branch.id}: {branch.tag} ({branch.planned_evidence_runs} evidence run(s))")
     for exp in round_plan.experiments:
-        console.print(f"- {exp.id}: {exp.tag}")
+        console.print(f"  - {exp.id}: {exp.tag} [{exp.branch_id}]")
 
 
 @app.command()
@@ -106,13 +111,18 @@ def run(
     round_mode = _round_mode_from_plan(round_plan)
     if dry_run:
         console.print(f"Dry run for round {round_plan.round_index} (mode={round_mode}):")
+        for branch in round_plan.branches:
+            console.print(f"- {branch.id}: {branch.tag} -> canonical={branch.canonical_config} -> evidence_runs={branch.planned_evidence_runs}")
         for exp in round_plan.experiments:
-            console.print(f"- {exp.id}: {exp.tag} -> {exp.config}")
+            console.print(f"  - {exp.id}: {exp.tag} [{exp.branch_id}] -> {exp.config}")
         return
-    results = execute_plan(task_spec, round_plan, run_root)
+    results = execute_plan(task_spec, round_plan, run_root, resume=True)
+    evidence_state = build_evidence_state(task_spec, [r for entry in history.entries for r in entry.experiments] + results)
+    save_evidence_state(run_root, round_plan.round_index, evidence_state)
     history.entries.append(HistoryEntry(round_index=round_plan.round_index, plan_path=str(plan_path), experiments=results))
     save_history(run_root, history)
-    console.print(f"Executed {len(results)} experiment(s) for round {round_plan.round_index} in mode={round_mode}.")
+    resumed = sum(1 for r in results if r.provenance is not None and r.provenance.resumed)
+    console.print(f"Executed {len(results)} experiment(s) for round {round_plan.round_index} in mode={round_mode} (resumed={resumed}).")
 
 
 @app.command()
@@ -158,6 +168,7 @@ def status(run: Path = typer.Option(..., help="Run directory")):
     history = load_history(run, task_name=task_spec.name)
     console.print(f"Task: [bold]{task_spec.name}[/bold]")
     console.print(f"Rounds completed: {len(history.entries)} / {task_spec.budget.max_rounds}")
+    console.print(f"Budget: branches/round={task_spec.budget.max_branches_per_round}, evidence-runs/branch={task_spec.budget.max_evidence_runs_per_branch}, max-runs/round={task_spec.budget.max_runs_per_round}")
     console.print(f"Seeds: {task_spec.seeds if task_spec.seeds else 'none'}")
     console.print(
         f"Evaluation regimes: {', '.join(regime.name for regime in task_spec.evaluation_regimes) if task_spec.evaluation_regimes else 'default'}"
@@ -209,6 +220,13 @@ def status(run: Path = typer.Option(..., help="Run directory")):
     latest_plan = load_plan(Path(latest.plan_path)) if Path(latest.plan_path).exists() else None
     latest_mode = _round_mode_from_plan(latest_plan) if latest_plan is not None else "unspecified"
     console.print(f"Latest round: {latest.round_index} (mode={latest_mode})")
+    latest_state = load_latest_evidence_state(run)
+    if latest_state and latest_state.get("branch_cards"):
+        console.print("Latest persisted evidence state:")
+        for card in latest_state["branch_cards"][:3]:
+            console.print(
+                f"- {card['branch_label']}: taxonomy={card['evidence_status']}, completed_members={card.get('completed_members', 0)}, incomplete_members={card.get('incomplete_members', 0)}"
+            )
     if latest.summary_path:
         console.print(f"Summary: {latest.summary_path}")
     if latest.suggestion_path:

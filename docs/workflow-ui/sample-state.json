@@ -1,0 +1,109 @@
+{
+  "project": {
+    "name": "scientific-ml-autoresearch",
+    "tagline": "Evidence-aware auto-research workflow for scientific machine learning",
+    "version": "0.1.0",
+    "focus": [
+      "branch-aware planning",
+      "evidence bundles",
+      "scientific checks",
+      "persisted evidence state",
+      "resumable execution"
+    ]
+  },
+  "workflow": [
+    {
+      "step": "Plan",
+      "title": "Branch-first round planning",
+      "description": "The planner allocates branch budget and evidence-run budget, then expands canonical branches into concrete evidence members.",
+      "accent": "blue"
+    },
+    {
+      "step": "Run",
+      "title": "Execution with recovery",
+      "description": "The runner executes train/eval commands, resumes completed experiments, repairs invalid artifacts, and keeps provenance per run.",
+      "accent": "violet"
+    },
+    {
+      "step": "Check",
+      "title": "Scientific constraints and robustness",
+      "description": "Constraints and robustness checks are recorded as structured evidence instead of being left as narrative reminders.",
+      "accent": "cyan"
+    },
+    {
+      "step": "Summarize",
+      "title": "Evidence-centered reporting",
+      "description": "The summary reports branch evidence, claim taxonomy, scientific check status, and the current best branch under aggregated evidence.",
+      "accent": "green"
+    },
+    {
+      "step": "Suggest",
+      "title": "Evidence-gap-driven recommendation",
+      "description": "Suggestions prioritize validation, ablation, or exploitation according to missing seed coverage, regime coverage, failed checks, and partial bundles.",
+      "accent": "amber"
+    }
+  ],
+  "metrics": {
+    "roundsCompleted": 3,
+    "branchesThisRound": 2,
+    "experimentsThisRound": 4,
+    "claimTaxonomy": "validated",
+    "resumeReady": true,
+    "evidenceState": true
+  },
+  "branchCards": [
+    {
+      "branchLabel": "model.width+loss.conservation_weight",
+      "taxonomy": "validated",
+      "mean": 0.0462,
+      "std": 0.0021,
+      "completedMembers": 4,
+      "incompleteMembers": 0,
+      "constraintPassRate": 1.0,
+      "robustnessPassRate": 1.0,
+      "gaps": []
+    },
+    {
+      "branchLabel": "model.width",
+      "taxonomy": "promising",
+      "mean": 0.0529,
+      "std": 0.0044,
+      "completedMembers": 2,
+      "incompleteMembers": 1,
+      "constraintPassRate": 1.0,
+      "robustnessPassRate": 0.5,
+      "gaps": ["partial-bundle", "regime-coverage"]
+    },
+    {
+      "branchLabel": "baseline",
+      "taxonomy": "observed",
+      "mean": 0.0614,
+      "std": 0.0000,
+      "completedMembers": 1,
+      "incompleteMembers": 0,
+      "constraintPassRate": 1.0,
+      "robustnessPassRate": null,
+      "gaps": ["replication"]
+    }
+  ],
+  "panels": {
+    "planning": [
+      "Two-level budgeting: branches per round + evidence runs per branch",
+      "Canonical branch identity removes seed and regime axes",
+      "Persisted evidence state can directly inform the next plan"
+    ],
+    "reliability": [
+      "Per-experiment provenance.json",
+      "Artifact validity flags",
+      "Resume and invalid-artifact recovery",
+      "Persisted round evidence state"
+    ],
+    "outputs": [
+      "round_XX_plan.yaml",
+      "round_XX_evidence_state.json",
+      "round_XX_summary.md",
+      "round_XX_suggestions.md",
+      "history.json"
+    ]
+  }
+}

@@ -34,6 +34,30 @@ def history_path(run_root: Path) -> Path:
     return run_root / "history.json"
 
 
+def evidence_state_path(run_root: Path, round_index: int) -> Path:
+    return run_root / f"round_{round_index:02d}_evidence_state.json"
+
+
+def save_evidence_state(run_root: Path, round_index: int, payload: dict[str, Any]) -> Path:
+    path = evidence_state_path(run_root, round_index)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return path
+
+
+def load_evidence_state(run_root: Path, round_index: int) -> dict[str, Any] | None:
+    path = evidence_state_path(run_root, round_index)
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_latest_evidence_state(run_root: Path) -> dict[str, Any] | None:
+    paths = sorted(run_root.glob("round_*_evidence_state.json"))
+    if not paths:
+        return None
+    return json.loads(paths[-1].read_text(encoding="utf-8"))
+
+
 def load_history(run_root: Path, task_name: str | None = None) -> History:
     path = history_path(run_root)
     if not path.exists():

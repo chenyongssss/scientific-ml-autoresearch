@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>scientific-ml-autoresearch · Workflow UI</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="wrapper">
+      <section id="hero" class="hero"></section>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <h2>Workflow architecture</h2>
+            <p class="muted">This interface translates the current repository design into a visual system: plan, run, check, summarize, suggest.</p>
+          </div>
+        </div>
+        <div id="workflow-grid" class="workflow-grid"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <h2>Branch evidence view</h2>
+            <p class="muted">Branch cards combine aggregated metrics, claim taxonomy, scientific checks, and bundle completeness in one place.</p>
+          </div>
+        </div>
+        <div id="branch-table"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <h2>Planning, reliability, outputs</h2>
+            <p class="muted">The current workflow couples evidence-aware planning with persisted state, provenance, artifact validity, and resumable execution.</p>
+          </div>
+        </div>
+        <div id="panel-grid" class="two-col"></div>
+      </section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>

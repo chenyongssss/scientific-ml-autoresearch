@@ -1,402 +1,284 @@
 # scientific-ml-autoresearch
 
-**A minimal autonomous research workflow for scientific machine learning.**
+## 中文说明
 
-Scientific ML research often follows a repetitive loop:
+**scientific-ml-autoresearch** 是一个面向 scientific machine learning 的轻量级自动研究工作流。
 
-- tweak an idea
-- create a few experiment configs
-- run training and evaluation
-- compare results
-- summarize what happened
-- decide what to try next
+它围绕研究中最常见的一条迭代链路组织起来：
 
-This project automates that loop with as little infrastructure as possible.
+- 规划实验分支
+- 执行训练与评估
+- 记录 scientific checks
+- 汇总证据状态
+- 生成下一轮建议
 
-It is designed for researchers who already have working training scripts and want a lightweight workflow to iterate faster, keep better experiment records, and reduce manual overhead.
+这个仓库的重点不是“大而全的 MLOps 平台”，也不是“全自动科学家”。
+它提供的是一个**完整、可运行、证据感知型**的研究工作流，用较少的基础设施完成以下事情：
 
-## Why this project?
+- branch-aware planning
+- evidence bundle expansion
+- constraints 与 robustness checks 的结构化记录
+- branch evidence card 聚合
+- claim taxonomy 与 evidence gaps
+- persisted evidence state
+- provenance 与 artifact validity
+- resumable execution
 
-Scientific ML experiments are often harder to manage than standard ML benchmarks because they involve:
+### 当前工作流
 
-- multiple baselines and ablations
-- PDE- or physics-specific constraints
-- custom metrics
-- noisy experiment bookkeeping
-- repeated small next-step decisions after each round
+核心循环由以下步骤组成：
 
-Most of this work is not intellectually deep, but it still consumes time.
+1. `plan`：根据 task spec、history 和 evidence state 生成 round plan
+2. `run`：执行 train / eval，并写入 metrics、checks、provenance
+3. `summarize`：生成 round summary，展示 branch evidence 与科学检查结果
+4. `suggest`：根据 claim taxonomy 与 evidence gaps 给出下一轮建议
+5. `loop`：把整个 round-based workflow 串起来持续运行
 
-This repo focuses on a simple goal:
+### 核心设计
 
-> make iterative research workflows easier to run, summarize, and continue.
+#### 1. 分支优先的计划方式
+系统把一个 round 看成若干 **canonical branches** 的预算分配问题，而不是单纯的 config 列表扩展。
 
-## What this project does
+每个 branch 可以再扩展成多个 evidence members，例如：
 
-`scientific-ml-autoresearch` provides a lightweight loop:
+- 不同 seed
+- 不同 evaluation regime
 
-1. **plan** the next round of experiments
-2. **run** those experiments
-3. **summarize** results into a readable report
-4. **suggest** what to try next
-5. **repeat**
+这使得 workflow 可以同时表达：
 
-The design is intentionally minimal:
+- branch exploration breadth
+- evidence validation depth
 
-- local-first
-- file-based
-- CLI-driven
-- easy to adapt to existing training scripts
-- no heavy orchestration required
+#### 2. 证据感知的研究判断
+系统不会只记录“谁最好”，还会维护：
 
-## What this project is not
+- branch evidence cards
+- claim taxonomy
+- evidence gaps
+- partial bundle completion
 
-This repo is **not**:
+它能够区分：
 
-- a fully autonomous scientist
-- a general multi-agent platform
-- a replacement for scientific judgment
-- a full MLOps system
-- tied to a single LLM provider or benchmark
+- observed
+- promising
+- validated
+- unsupported
 
-The goal is not to discover science automatically.
+并把这些状态反馈到 planner 和 suggester 中。
 
-The goal is to provide a practical, open-source workflow that helps scientific ML researchers iterate more cleanly and more consistently.
+#### 3. scientific checks 是一等对象
+`constraints` 和 `robustness_checks` 不是备注，它们会进入：
 
-## Installation
+- runner
+- evidence state
+- summary
+- suggestion
+- planning decisions
 
-```bash
-git clone https://github.com/yourname/scientific-ml-autoresearch.git
-cd scientific-ml-autoresearch
-pip install -e .
-```
-
-## Quick start
-
-```bash
-autoresearch init --example advection --output runs/advection_demo
-autoresearch plan --task runs/advection_demo/task.yaml
-autoresearch run --task runs/advection_demo/task.yaml
-autoresearch summarize --run runs/advection_demo
-autoresearch suggest --run runs/advection_demo
-autoresearch loop --task runs/advection_demo/task.yaml --rounds 2
-```
-
-You can also start from the second example:
-
-```bash
-autoresearch init --example burgers --output runs/burgers_demo
-```
-
-## Detailed usage guide
-
-### 1. Initialize a run directory
-
-```bash
-autoresearch init --example advection --output runs/advection_demo
-```
-
-This creates a self-contained run directory with:
-
-- `task.yaml`
-- example scripts
-- `history.json`
-
-Use `advection` or `burgers` as the starting example, then edit `task.yaml` to match your own project.
-
-### 2. Inspect the task file
-
-A task file defines:
-
-- `commands.train` and `commands.eval`
-- tracked metrics
-- search space
-- planner baseline
-- budget
-- optional `seeds`
-- optional `evaluation_regimes`
-- optional `constraints`
-- optional `robustness_checks`
-
-Minimal example:
-
-```yaml
-name: advection_minimal
-workspace: .
-commands:
-  train: "python train.py --config {config_path} --output-dir {run_dir}"
-  eval: "python evaluate.py --run-dir {run_dir}"
-metrics:
-  primary: [rel_l2]
-  secondary: [conservation_error, runtime_seconds]
-search_space:
-  model.width: [32, 64]
-planner:
-  baseline:
-    model.width: 32
-budget:
-  max_runs_per_round: 4
-  max_rounds: 3
-seeds: [0, 1]
-evaluation_regimes:
-  - name: default-grid
-  - name: harder-grid
-constraints:
-  - conservation
-robustness_checks:
-  - name: shifted-grid
-```
-
-### 3. Use constraints and robustness hooks
-
-These fields are lightweight but important if you want the workflow to look more like scientific ML rather than generic config search.
-
-#### `constraints`
-Use this list for domain properties you expect the method to respect, for example:
+这让 scientific ML 中常见的验证逻辑，例如：
 
 - conservation
-- positivity
-- stable long-time behavior
-- symmetry preservation
-- shock-capturing quality
+- stability
+- shifted-grid robustness
+- noisy-observation robustness
 
-The current system does not yet automatically compute these checks, but it does:
+能够成为真正可追踪的 workflow 对象。
 
-- surface them in summaries
-- include them in suggestions
-- encourage you to validate them before overclaiming progress
+#### 4. 可靠性层
+仓库当前包含完整的 workflow reliability 基础：
 
-#### `robustness_checks`
-Use this list for explicit validation hooks, for example:
+- `provenance.json`
+- artifact validity flags
+- `round_XX_evidence_state.json`
+- resume / rerun policy
+- invalid artifact recovery
 
-- shifted-grid
-- noisy-observation
-- sharper-regime
-- lr-perturbation
-- parameter-transfer
+这意味着 workflow 不只是“会建议”，还能够在中断后继续运行，并对结果有效性做出明确判断。
 
-The current system uses them as structured reminders in reports and suggestions.
+### 主要文件与输出
 
-### 4. Preview the next round
+典型运行目录会包含：
 
-```bash
-autoresearch plan --task runs/advection_demo/task.yaml --preview
-```
+- `task.yaml`
+- `round_XX_plan.yaml`
+- `round_XX_evidence_state.json`
+- `round_XX_summary.md`
+- `round_XX_suggestions.md`
+- `history.json`
 
-This shows the next round without writing files.
+每个 experiment 目录中通常包含：
 
-Useful when you want to inspect whether the planner is in:
+- `config.yaml`
+- `train.log`
+- `eval.log`
+- `metrics.json`
+- `provenance.json`
+- robustness artifacts
 
-- `explore`
-- `exploit`
-- `ablate`
-- `validate`
-
-mode before actually saving or running anything.
-
-### 5. Save a round plan
+### 命令行入口
 
 ```bash
+autoresearch init --example advection --output runs/advection_demo
 autoresearch plan --task runs/advection_demo/task.yaml
-```
-
-This writes a file like:
-
-- `round_01_plan.yaml`
-- `round_02_plan.yaml`
-
-The first experiment in each round is the anchor, and its tag encodes the round mode, for example:
-
-- `carryover-explore`
-- `carryover-exploit`
-- `carryover-ablate`
-- `carryover-validate`
-
-### 6. Dry-run before execution
-
-```bash
-autoresearch run --task runs/advection_demo/task.yaml --dry-run
-```
-
-This prints the exact experiment configs that would run.
-
-### 7. Execute experiments
-
-```bash
 autoresearch run --task runs/advection_demo/task.yaml
-```
-
-By default the runner:
-
-- writes one config per experiment
-- executes the training command
-- executes the evaluation command
-- collects metrics into per-experiment directories
-
-### 8. Summarize results
-
-```bash
 autoresearch summarize --run runs/advection_demo
-```
-
-The generated summary includes:
-
-- round mode
-- ranking
-- delta vs baseline
-- delta vs round anchor
-- best run in this round
-- best-so-far across all completed rounds
-- named constraints
-- named robustness hooks
-
-### 9. Generate next-step suggestions
-
-```bash
 autoresearch suggest --run runs/advection_demo
-```
-
-Suggestions include:
-
-- rationale from the current round
-- `next_action_type`
-- actionable next experiments
-- reminders about constraints and robustness hooks
-
-Current action types are:
-
-- `explore`
-- `exploit`
-- `ablate`
-- `validate`
-- `stop`
-
-### 10. Check current status
-
-```bash
-autoresearch status --run runs/advection_demo
-```
-
-This shows:
-
-- rounds completed
-- seeds and evaluation regimes
-- best-so-far run and config
-- per-round best trend
-- latest summary path
-- latest suggestion path
-- latest round mode
-
-### 11. Run a multi-round loop
-
-```bash
 autoresearch loop --task runs/advection_demo/task.yaml --rounds 3
-```
-
-During the loop, the tool now prints:
-
-- current round mode
-- planned experiments
-- round completion summary
-- current best result
-- next recommended action type
-
-The loop also supports a lightweight stopping heuristic:
-
-- if the suggestion after a round becomes `stop`, the loop ends early
-
-## Helpful CLI options
-
-```bash
-# Preview the next round plan without writing files
-autoresearch plan --task runs/advection_demo/task.yaml --preview
-
-# Show which experiments would run without executing them
-autoresearch run --task runs/advection_demo/task.yaml --dry-run
-
-# Show current progress, best run so far, and report locations
 autoresearch status --run runs/advection_demo
 ```
 
-## Typical workflow
+### 文档与界面
 
-```text
-task.yaml
-   ↓
-plan
-   ↓
-round_01_plan.yaml
-   ↓
-run
-   ↓
-metrics + logs + artifacts
-   ↓
-summarize
-   ↓
-round_01_summary.md
-   ↓
-suggest
-   ↓
-round_01_suggestions.md
+- 任务格式：`docs/task-format.md`
+- 扩展说明：`docs/extending.md`
+- 静态工作流界面：`docs/workflow-ui/index.html`
+
+静态界面使用纯 HTML / CSS / JS 编写，可以直接在浏览器中打开。
+
+---
+
+## English
+
+**scientific-ml-autoresearch** is a lightweight auto-research workflow for scientific machine learning.
+
+It organizes a familiar research loop into a coherent system:
+
+- plan experiment branches
+- execute training and evaluation
+- record scientific checks
+- aggregate evidence state
+- generate the next round suggestion
+
+This repository is not positioned as a full MLOps platform or an autonomous scientist.
+It is a **complete, runnable, evidence-aware workflow** built to support scientific ML research with modest infrastructure and clear state transitions.
+
+### What the workflow contains
+
+The current system includes:
+
+- branch-aware planning
+- evidence bundle expansion
+- structured constraints and robustness checks
+- branch evidence cards
+- claim taxonomy and evidence gaps
+- persisted evidence state
+- provenance and artifact validity
+- resumable execution
+
+### Current workflow loop
+
+The main loop is organized as:
+
+1. `plan`: generate a round plan from the task spec, history, and evidence state
+2. `run`: execute train / eval commands and write metrics, checks, and provenance
+3. `summarize`: produce a round summary centered on branch evidence and scientific checks
+4. `suggest`: recommend the next action from claim taxonomy and evidence gaps
+5. `loop`: connect the round-based workflow into a continuous research cycle
+
+### Core design
+
+#### 1. Branch-first planning
+A round is treated as an allocation problem over **canonical branches**, not only as a flat list of configurations.
+
+Each branch can expand into multiple evidence members, such as:
+
+- different seeds
+- different evaluation regimes
+
+This gives the workflow an explicit way to represent both:
+
+- exploration breadth
+- validation depth
+
+#### 2. Evidence-aware research judgment
+The system tracks more than a single best run. It maintains:
+
+- branch evidence cards
+- claim taxonomy
+- evidence gaps
+- partial bundle completion
+
+It distinguishes among:
+
+- observed
+- promising
+- validated
+- unsupported
+
+These states feed back into planning and suggestion generation.
+
+#### 3. Scientific checks as first-class workflow objects
+`constraints` and `robustness_checks` are part of execution and reporting rather than being left as narrative comments.
+
+They are consumed by:
+
+- the runner
+- evidence state generation
+- summaries
+- suggestions
+- planning decisions
+
+This makes common scientific ML validation concepts such as:
+
+- conservation
+- stability
+- shifted-grid robustness
+- noisy-observation robustness
+
+part of the workflow itself.
+
+#### 4. Reliability layer
+The repository includes a workflow reliability layer with:
+
+- `provenance.json`
+- artifact validity flags
+- `round_XX_evidence_state.json`
+- resume / rerun policy
+- invalid artifact recovery
+
+The workflow therefore does more than recommend actions. It can resume interrupted work and make explicit judgments about artifact validity.
+
+### Main files and outputs
+
+A typical run directory contains:
+
+- `task.yaml`
+- `round_XX_plan.yaml`
+- `round_XX_evidence_state.json`
+- `round_XX_summary.md`
+- `round_XX_suggestions.md`
+- `history.json`
+
+Each experiment directory commonly contains:
+
+- `config.yaml`
+- `train.log`
+- `eval.log`
+- `metrics.json`
+- `provenance.json`
+- robustness artifacts
+
+### CLI entry points
+
+```bash
+autoresearch init --example advection --output runs/advection_demo
+autoresearch plan --task runs/advection_demo/task.yaml
+autoresearch run --task runs/advection_demo/task.yaml
+autoresearch summarize --run runs/advection_demo
+autoresearch suggest --run runs/advection_demo
+autoresearch loop --task runs/advection_demo/task.yaml --rounds 3
+autoresearch status --run runs/advection_demo
 ```
 
-## Example summary output
+### Documentation and UI
 
-```md
-## Best Run
-`exp_003` achieved the best `rel_l2` value in this round: `0.0464`.
-Compared with baseline, the improvement on `rel_l2` is `0.016800`.
-Compared with the round anchor, the improvement on `rel_l2` is `0.004000`.
+- Task format: `docs/task-format.md`
+- Extension notes: `docs/extending.md`
+- Static workflow UI: `docs/workflow-ui/index.html`
 
-## Scientific checks
-- Review whether the best run appears consistent with these named constraints: conservation, stable long-time behavior.
-- Pending robustness hooks for this task: shifted-grid, noisy-observation.
-```
+The UI is written in plain HTML / CSS / JS and can be opened directly in a browser.
 
-## Current features
-
-- simple file-based task spec
-- heuristic round planning with explicit exploit / explore / ablate / validate modes
-- lightweight history-aware carryover of the best previous configuration
-- round 2+ generation that adapts between refinement, ablation, exploration, and validation
-- local execution of train/eval commands
-- markdown round summaries with round mode, config changes, ranking, baseline deltas, anchor deltas, constraints, and robustness hooks
-- suggestion logic that reasons about anchor gains, top-run gaps, stopping cases, constraints, and robustness hooks
-- reproducible run directories
-- plan preview, run dry-run, and status inspection support
-- more informative loop progress logs with early stopping on `stop`
-- two toy scientific ML-style examples: advection and Burgers
-
-## Project layout
-
-```text
-scientific-ml-autoresearch/
-├─ examples/
-├─ src/autoresearch/
-├─ docs/
-├─ runs/
-└─ tests/
-```
-
-## Philosophy
-
-This repo tries to sit in a narrow but useful space:
-
-- more structured than ad-hoc scripts
-- much lighter than a full orchestration platform
-- more research-aware than generic experiment tracking
-
-If it helps researchers spend less time on repetitive workflow glue and more time on actual scientific reasoning, it is doing its job.
-
-## Next improvements
-
-Near-term improvements are still focused on practical workflow quality:
-
-- stronger historical stopping rules
-- richer summary/report views
-- more realistic scientific ML adapters
-- optional model-backed suggestion mode
-- explicit claim-strength reporting for scientific conclusions
+---
 
 ## License
 
