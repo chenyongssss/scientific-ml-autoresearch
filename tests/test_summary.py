@@ -2,6 +2,27 @@ from autoresearch.summarizer import build_summary
 from autoresearch.schemas import ExperimentResult, ScientificCheckResult, TaskSpec
 
 
+def test_summary_includes_missing_seed_and_regime_lists_for_leading_branch():
+    task = TaskSpec(
+        name="demo",
+        workspace=".",
+        commands={"train": "x", "eval": "y"},
+        metrics={"primary": ["rel_l2"], "secondary": []},
+        planner={"baseline": {"model.width": 32}},
+        reporting={"sort_by": "rel_l2", "lower_is_better": True},
+        seeds=[0, 1],
+        evaluation_regimes=[{"name": "default"}, {"name": "harder"}],
+    )
+    results = [
+        ExperimentResult(experiment_id="exp_001", round_index=1, status="ok", metrics={"rel_l2": 0.3}, config={"model.width": 32, "seed": 0, "evaluation_regime": "default"}, run_dir="a"),
+        ExperimentResult(experiment_id="exp_002", round_index=1, status="ok", metrics={"rel_l2": 0.1}, config={"model.width": 64, "seed": 1, "evaluation_regime": "harder"}, run_dir="b"),
+    ]
+    summary = build_summary(task, 1, results)
+    assert "Missing seeds for the leading branch: `0`." in summary
+    assert "Missing regimes for the leading branch: `default`." in summary
+
+
+
 def test_summary_includes_anchor_delta():
     task = TaskSpec(
         name="demo",
@@ -55,6 +76,8 @@ def test_summary_includes_anchor_delta():
     assert "Branch evidence" in summary
     assert "Aggregated branch evidence" in summary
     assert "Evidence status" in summary
+    assert "Evidence gaps" in summary
+    assert "Current evidence gaps for the leading branch" in summary
     assert "Scientific checks passed" in summary
     assert "Per-experiment scientific check details" in summary
     assert "constraint:conservation -> passed" in summary

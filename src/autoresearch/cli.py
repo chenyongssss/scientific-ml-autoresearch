@@ -53,6 +53,31 @@ def _round_claim_label(task_spec, round_results):
     return "uncertain"
 
 
+def _format_branch_card_status(card: dict) -> str:
+    segments = [
+        f"taxonomy={card['evidence_status']}",
+        f"completed_members={card.get('completed_members', 0)}",
+        f"incomplete_members={card.get('incomplete_members', 0)}",
+    ]
+    if card.get("evidence_gaps"):
+        segments.append(f"gaps={', '.join(card['evidence_gaps'])}")
+    if card.get("missing_seeds"):
+        segments.append(f"missing_seeds={', '.join(str(seed) for seed in card['missing_seeds'])}")
+    if card.get("missing_regimes"):
+        segments.append(f"missing_regimes={', '.join(card['missing_regimes'])}")
+    coverage_guidance = card.get("coverage_guidance") or {}
+    fixed_axes = coverage_guidance.get("recommended_fixed_axes") or {}
+    if coverage_guidance.get("target_missing_seeds"):
+        segments.append("target_missing_seeds=" + ", ".join(str(seed) for seed in coverage_guidance["target_missing_seeds"]))
+    if coverage_guidance.get("target_missing_regimes"):
+        segments.append("target_missing_regimes=" + ", ".join(coverage_guidance["target_missing_regimes"]))
+    if fixed_axes.get("seed"):
+        segments.append("fixed_seed=" + ", ".join(str(seed) for seed in fixed_axes["seed"]))
+    if fixed_axes.get("evaluation_regime"):
+        segments.append("fixed_regime=" + ", ".join(fixed_axes["evaluation_regime"]))
+    return ", ".join(segments)
+
+
 @app.command()
 def init(example: str = typer.Option(..., help="Example name under examples/"), output: Path = typer.Option(..., help="Output run directory.")):
     source = EXAMPLES_DIR / example
@@ -224,9 +249,7 @@ def status(run: Path = typer.Option(..., help="Run directory")):
     if latest_state and latest_state.get("branch_cards"):
         console.print("Latest persisted evidence state:")
         for card in latest_state["branch_cards"][:3]:
-            console.print(
-                f"- {card['branch_label']}: taxonomy={card['evidence_status']}, completed_members={card.get('completed_members', 0)}, incomplete_members={card.get('incomplete_members', 0)}"
-            )
+            console.print(f"- {card['branch_label']}: {_format_branch_card_status(card)}")
     if latest.summary_path:
         console.print(f"Summary: {latest.summary_path}")
     if latest.suggestion_path:

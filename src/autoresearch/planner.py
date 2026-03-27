@@ -214,6 +214,47 @@ def _missing_member_axes(card: dict) -> list[dict]:
     return expected
 
 
+def _preferred_axes_for_gap(task: TaskSpec, card: dict, gap_focus: str | None) -> list[dict] | None:
+    if gap_focus == "partial-bundle":
+        return _missing_member_axes(card)
+
+    coverage_guidance = card.get("coverage_guidance") or {}
+    expected_regimes = [regime.name for regime in task.evaluation_regimes]
+    observed_seeds = card.get("seeds") or task.seeds or []
+    observed_regimes = card.get("regimes") or expected_regimes or []
+    missing_seeds = coverage_guidance.get("target_missing_seeds") or card.get("missing_seeds") or []
+    missing_regimes = coverage_guidance.get("target_missing_regimes") or card.get("missing_regimes") or []
+    fixed_axes = coverage_guidance.get("recommended_fixed_axes") or {}
+
+    preferred: list[dict] = []
+    if gap_focus == "seed-coverage" and missing_seeds:
+        regime_pool = fixed_axes.get("evaluation_regime") or observed_regimes or expected_regimes or [None]
+        for seed in missing_seeds:
+            for regime in regime_pool:
+                axis = {"seed": seed}
+                if regime is not None:
+                    axis["evaluation_regime"] = regime
+                preferred.append(axis)
+    elif gap_focus == "regime-coverage" and missing_regimes:
+        seed_pool = fixed_axes.get("seed") or observed_seeds or task.seeds or [None]
+        for regime in missing_regimes:
+            for seed in seed_pool:
+                axis = {"evaluation_regime": regime}
+                if seed is not None:
+                    axis["seed"] = seed
+                preferred.append(axis)
+
+    deduped = []
+    seen_axes = set()
+    for axis in preferred:
+        frozen = tuple(sorted(axis.items()))
+        if frozen in seen_axes:
+            continue
+        seen_axes.add(frozen)
+        deduped.append(axis)
+    return deduped or None
+
+
 def _plan_from_evidence_gaps(task: TaskSpec, history: History, plan: RoundPlan, seen: set[tuple]) -> bool:
     cards, source = _branch_cards_with_source(task, history)
     if not cards:
@@ -236,9 +277,13 @@ def _plan_from_evidence_gaps(task: TaskSpec, history: History, plan: RoundPlan, 
 
     for card, gap_focus in actionable[:max_branches]:
         canonical = dict(card["canonical_config"])
-        preferred_axes = _missing_member_axes(card) if (source == "persisted" and gap_focus == "partial-bundle") else None
+        preferred_axes = _preferred_axes_for_gap(task, card, gap_focus)
         tag = "validate"
         notes = [f"address evidence gap: {gap_focus}", f"source={source}-evidence-state"]
+        if gap_focus == "seed-coverage" and card.get("missing_seeds"):
+            notes.append("target missing seeds: " + ", ".join(str(seed) for seed in card["missing_seeds"]))
+        if gap_focus == "regime-coverage" and card.get("missing_regimes"):
+            notes.append("target missing regimes: " + ", ".join(card["missing_regimes"]))
         _add_branch_bundle(plan, seen, canonical, tag, notes, task, gap_focus=gap_focus, preferred_axes=preferred_axes)
         if len(plan.branches) >= max_branches or len(plan.experiments) >= task.budget.max_runs_per_round:
             break

@@ -91,6 +91,29 @@ def _claim_strength(task: TaskSpec, results: list[ExperimentResult], historical_
     return "uncertain"
 
 
+def _targeted_validation_hint(task: TaskSpec, best_card: dict | None) -> str | None:
+    if best_card is None:
+        return None
+    coverage_guidance = best_card.get("coverage_guidance") or {}
+    missing_seeds = coverage_guidance.get("target_missing_seeds") or best_card.get("missing_seeds") or []
+    missing_regimes = coverage_guidance.get("target_missing_regimes") or best_card.get("missing_regimes") or []
+    fixed_axes = coverage_guidance.get("recommended_fixed_axes") or {}
+    observed_seeds = fixed_axes.get("seed") or best_card.get("seeds") or task.seeds or []
+    observed_regimes = fixed_axes.get("evaluation_regime") or best_card.get("regimes") or [regime.name for regime in task.evaluation_regimes] or []
+
+    if missing_seeds:
+        regime_hint = ""
+        if observed_regimes:
+            regime_hint = f" while keeping the evaluation regime fixed to one of: {', '.join(observed_regimes)}"
+        return f"Target the missing seeds next: {', '.join(str(seed) for seed in missing_seeds)}{regime_hint}."
+    if missing_regimes:
+        seed_hint = ""
+        if observed_seeds:
+            seed_hint = f" while keeping the seed fixed to one of: {', '.join(str(seed) for seed in observed_seeds)}"
+        return f"Target the missing regimes next: {', '.join(missing_regimes)}{seed_hint}."
+    return None
+
+
 def build_suggestions(task: TaskSpec, results: list[ExperimentResult], historical_results: list[ExperimentResult] | None = None) -> Suggestion:
     historical_results = historical_results or []
     metric_name = _metric_name(task)
@@ -126,6 +149,11 @@ def build_suggestions(task: TaskSpec, results: list[ExperimentResult], historica
         rationale_parts.append(
             f"Aggregated branch evidence currently favors `{best_card['branch_label']}` with mean `{metric_name}={best_card['mean']:.6f}`, std `{best_card['std']:.6f}`, and taxonomy `{taxonomy}` over {best_card['count']} run(s)."
         )
+        if best_card.get("evidence_gaps"):
+            rationale_parts.append(f"Open evidence gaps for the leading branch: {', '.join(best_card['evidence_gaps'])}.")
+        targeted_hint = _targeted_validation_hint(task, best_card)
+        if targeted_hint is not None:
+            rationale_parts.append(targeted_hint)
     actions = [f"Repeat {best.experiment_id} with another seed to check stability."]
     next_action_type = "validate"
 
@@ -190,11 +218,22 @@ def build_suggestions(task: TaskSpec, results: list[ExperimentResult], historica
         actions.append("The current best-looking branch is unsupported under aggregated evidence; debug failed checks or abandon the branch.")
         next_action_type = "stop" if check_counts["failed"] > 0 else "validate"
 
+    if best_card is not None and "partial-bundle" in best_card.get("evidence_gaps", []):
+        actions.append("Complete the missing bundle members for the leading branch before comparing it against new branches.")
+        next_action_type = "validate"
+    if best_card is not None and "replication" in best_card.get("evidence_gaps", []):
+        actions.append("The leading branch still lacks replication; add another evidence member before escalating any claim.")
+        next_action_type = "validate"
+
     if best_card is not None and best_card["seed_count"] < max(1, len(task.seeds)):
-        actions.append("Increase seed coverage for the leading branch so the evidence card is not dominated by single-seed luck.")
+        missing_seed_text = f" Missing seeds: {', '.join(str(seed) for seed in best_card.get('missing_seeds', []))}." if best_card.get("missing_seeds") else ""
+        fixed_regime_text = f" Keep the evaluation regime fixed to one of: {', '.join(best_card.get('regimes', []))}." if best_card.get("regimes") else ""
+        actions.append("Increase seed coverage for the leading branch so the evidence card is not dominated by single-seed luck." + missing_seed_text + fixed_regime_text)
         next_action_type = "validate"
     if task.evaluation_regimes and best_card is not None and best_card["regime_count"] < len(task.evaluation_regimes):
-        actions.append("Evaluate the leading branch across the remaining named regimes before another exploit step.")
+        missing_regime_text = f" Remaining regimes: {', '.join(best_card.get('missing_regimes', []))}." if best_card.get("missing_regimes") else ""
+        fixed_seed_text = f" Keep the seed fixed to one of: {', '.join(str(seed) for seed in best_card.get('seeds', []))}." if best_card.get("seeds") else ""
+        actions.append("Evaluate the leading branch across the remaining named regimes before another exploit step." + missing_regime_text + fixed_seed_text)
         next_action_type = "validate"
 
     if check_counts["failed"] > 0 or check_counts["error"] > 0:

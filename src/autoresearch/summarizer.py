@@ -233,15 +233,22 @@ def build_summary(
         lines.append(
             f"Best branch by aggregated evidence: `{best_card['branch_label']}` with mean `{metric_name}={best_card['mean']:.6f}` and std `{best_card['std']:.6f}` across {best_card['count']} run(s)."
         )
+        gap_text = ", ".join(best_card["evidence_gaps"]) if best_card.get("evidence_gaps") else "none"
+        lines.append(f"Current evidence gaps for the leading branch: `{gap_text}`.")
+        if best_card.get("missing_seeds"):
+            lines.append(f"Missing seeds for the leading branch: `{', '.join(str(seed) for seed in best_card['missing_seeds'])}`.")
+        if best_card.get("missing_regimes"):
+            lines.append(f"Missing regimes for the leading branch: `{', '.join(best_card['missing_regimes'])}`.")
     if branch_cards:
         lines.append("")
-        lines.append("| Branch | Mean | Std | Best | Runs | Seeds | Regimes | Constraint pass rate | Robustness pass rate | Evidence status |")
-        lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---|")
+        lines.append("| Branch | Mean | Std | Best | Runs | Seeds | Regimes | Constraint pass rate | Robustness pass rate | Evidence status | Evidence gaps |")
+        lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|")
         for card in branch_cards:
             constraint_rate = "-" if card["constraint_pass_rate"] is None else f"{card['constraint_pass_rate']:.2f}"
             robustness_rate = "-" if card["robustness_pass_rate"] is None else f"{card['robustness_pass_rate']:.2f}"
+            evidence_gaps = ", ".join(card["evidence_gaps"]) if card.get("evidence_gaps") else "-"
             lines.append(
-                f"| {card['branch_label']} | {card['mean']:.6f} | {card['std']:.6f} | {float(card['best']):.6f} | {card['count']} | {card['seed_count']} | {card['regime_count']} | {constraint_rate} | {robustness_rate} | {card['evidence_status']} |"
+                f"| {card['branch_label']} | {card['mean']:.6f} | {card['std']:.6f} | {float(card['best']):.6f} | {card['count']} | {card['seed_count']} | {card['regime_count']} | {constraint_rate} | {robustness_rate} | {card['evidence_status']} | {evidence_gaps} |"
             )
     else:
         lines.append("No aggregated branch evidence is available yet.")

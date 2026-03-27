@@ -55,6 +55,23 @@ def expected_regime_count(task: TaskSpec) -> int:
     return len(task.evaluation_regimes)
 
 
+def expected_regime_names(task: TaskSpec) -> list[str]:
+    return [regime.name for regime in task.evaluation_regimes]
+
+
+def _coverage_guidance(task: TaskSpec, seeds: list[int], regimes: list[str], missing_seeds: list[int], missing_regimes: list[str]) -> dict[str, Any]:
+    guidance: dict[str, Any] = {
+        "target_missing_seeds": missing_seeds,
+        "target_missing_regimes": missing_regimes,
+        "recommended_fixed_axes": {},
+    }
+    if missing_seeds and regimes:
+        guidance["recommended_fixed_axes"]["evaluation_regime"] = regimes
+    if missing_regimes and seeds:
+        guidance["recommended_fixed_axes"]["seed"] = seeds
+    return guidance
+
+
 def aggregate_branch_evidence(task: TaskSpec, results: list[ExperimentResult]) -> list[dict[str, Any]]:
     name = metric_name(task)
     lower_is_better = task.reporting.lower_is_better
@@ -113,6 +130,10 @@ def aggregate_branch_evidence(task: TaskSpec, results: list[ExperimentResult]) -
         else:
             evidence_status = "observed"
 
+        missing_seeds = [seed for seed in task.seeds if seed not in seeds]
+        expected_regimes = expected_regime_names(task)
+        missing_regimes = [regime for regime in expected_regimes if regime not in regimes]
+
         card = {
             "branch_key": key,
             "branch_label": branch_label(config_without_evidence_axes(best_result.config), baseline),
@@ -122,6 +143,9 @@ def aggregate_branch_evidence(task: TaskSpec, results: list[ExperimentResult]) -
             "regime_count": len(regimes),
             "seeds": seeds,
             "regimes": regimes,
+            "missing_seeds": missing_seeds,
+            "missing_regimes": missing_regimes,
+            "coverage_guidance": _coverage_guidance(task, seeds, regimes, missing_seeds, missing_regimes),
             "metric_name": name,
             "mean": _mean(metric_values),
             "std": _std(metric_values),
@@ -144,9 +168,9 @@ def aggregate_branch_evidence(task: TaskSpec, results: list[ExperimentResult]) -
 
 def detect_evidence_gaps(task: TaskSpec, card: dict[str, Any]) -> list[str]:
     gaps: list[str] = []
-    if expected_seed_count(task) > 0 and card.get("seed_count", 0) > 0 and card.get("seed_count", 0) < expected_seed_count(task):
+    if expected_seed_count(task) > 1 and card.get("seed_count", 0) < expected_seed_count(task):
         gaps.append("seed-coverage")
-    if expected_regime_count(task) > 0 and card.get("regime_count", 0) > 0 and card.get("regime_count", 0) < expected_regime_count(task):
+    if expected_regime_count(task) > 1 and card.get("regime_count", 0) < expected_regime_count(task):
         gaps.append("regime-coverage")
     if card.get("pending_or_missing", 0) > 0:
         gaps.append("pending-checks")

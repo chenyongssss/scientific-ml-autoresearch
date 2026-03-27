@@ -48,9 +48,33 @@ def test_suggestions_reference_anchor_gain():
     assert "claim strength" in suggestion.rationale.lower()
     assert "claim taxonomy" in suggestion.rationale.lower()
     assert "Aggregated branch evidence" in suggestion.rationale
+    assert "Open evidence gaps" in suggestion.rationale
     assert "Historical positive rounds" in suggestion.rationale
     assert "Scientific check counts" in suggestion.rationale
-    assert any("seed coverage" in action.lower() or "remaining named regimes" in action.lower() for action in suggestion.actions)
+
+
+def test_suggestions_include_specific_missing_seed_and_regime_guidance():
+    task = TaskSpec(
+        name="demo",
+        workspace=".",
+        commands={"train": "x", "eval": "y"},
+        metrics={"primary": ["rel_l2"]},
+        planner={"baseline": {"model.width": 32}},
+        reporting={"sort_by": "rel_l2", "lower_is_better": True},
+        seeds=[0, 1],
+        evaluation_regimes=[{"name": "default"}, {"name": "harder"}],
+    )
+    results = [
+        ExperimentResult(experiment_id="exp_001", round_index=1, status="ok", metrics={"rel_l2": 0.3}, config={"model.width": 32, "seed": 0, "evaluation_regime": "default"}, run_dir="a"),
+        ExperimentResult(experiment_id="exp_002", round_index=1, status="ok", metrics={"rel_l2": 0.1}, config={"model.width": 64, "seed": 1, "evaluation_regime": "harder"}, run_dir="b"),
+    ]
+    suggestion = build_suggestions(task, results)
+    assert "Target the missing seeds next: 0 while keeping the evaluation regime fixed to one of: harder." in suggestion.rationale
+    assert any("Missing seeds: 0." in action for action in suggestion.actions)
+    assert any("Keep the evaluation regime fixed to one of: harder." in action for action in suggestion.actions)
+    assert any("Remaining regimes: default." in action for action in suggestion.actions)
+    assert any("Keep the seed fixed to one of: 1." in action for action in suggestion.actions)
+
 
 
 def test_suggestions_can_trigger_stop_when_no_improvement():
